@@ -1,0 +1,1694 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>听音识乐器 · 音色辨认练习</title>
+
+<!--
+=====================================================================
+  听音识乐器 v2 —— 乐器音色辨认练习页
+  单文件、零依赖，用浏览器打开即可运行。
+=====================================================================
+
+  ★ 音频资源说明（真实录音 / 占位合成音）
+
+  1) 真实录音优先：页面把每件乐器的 file 字段当音频地址，启动时依次探测
+         audio/<file>   → 再试同名 .mp3 / .m4a / .wav / .ogg
+     探测成功 → 播放真实录音，界面标注「🎧 真实录音」。
+     探测失败 → 播放该乐器自己对应的**合成占位音**，界面明确标注「🎹 占位合成音」，
+                题库面板里也会显示其音频状态；绝不会拿别的乐器的音频来顶替，
+                也不会静默播放不相关的音频。
+
+  2) 合成占位音由 Web Audio API 实时生成，参数取自每件乐器的音区(base)、
+     演奏方式(gen)、明亮度/揉弦/气声/金属感等(p)，只是近似音色，不是真实录音。
+
+  3) 本页已内置的真实录音全部来自 Wikimedia Commons，逐条核实过来源页面、
+     作者与授权协议（CC BY-SA / CC BY / CC0 / 公有领域），完整清单见页面底部
+     「音频来源与授权」面板，并同步记录在 audio/CREDITS.md。使用时请保留署名。
+
+     ★ 覆盖情况：西洋乐器 24 种全部为真实录音（含指定的 20 种西洋乐器）；
+       中国民族乐器 28 种暂无合规真实录音，仍用各自的合成占位音。
+
+     ★ 个别素材的取舍已在 CREDITS 中如实标注，例如圆号使用的是杜卡斯
+       《Villanelle》1952 年 Dennis Brain 录音的开头独奏段落（含钢琴伴奏）。
+
+     ★ 注意：CC BY-SA 类素材要求「署名 + 相同方式共享」。若你要把本页改作
+       商业用途或去掉署名，请先自行核对每个文件的授权条款。
+
+  ★ 扩充题库：只需在 LIB 数组里追加一条记录，字段见第 2 节注释。
+=====================================================================
+-->
+
+<style>
+  :root{
+    --bg-1:#f5f7ff; --bg-2:#fdf5fb; --bg-3:#eefaf6;
+    --card:#ffffff;
+    --ink:#1e2338; --ink-2:#5a6484; --ink-3:#8b93ad;
+    --line:#e6e9f6;
+    --accent:#6c5ce7; --accent-2:#8b7cf6; --accent-soft:#efecff;
+    --ok:#0f9d58; --ok-soft:#e8f8f0; --ok-line:#43c78e;
+    --no:#e5484d; --no-soft:#fdeded; --no-line:#f0908f;
+    --warn:#b26a00; --warn-soft:#fff6e5; --warn-line:#ffdfa8;
+    --cn:#c2410c; --cn-soft:#fff2e8; --cn-line:#ffd5b8;
+    --west:#1d4ed8; --west-soft:#eef3ff; --west-line:#c8d8ff;
+    --r-lg:24px; --r-md:16px;
+    --shadow:0 14px 36px rgba(38,50,110,.10), 0 2px 8px rgba(38,50,110,.05);
+    --shadow-sm:0 4px 14px rgba(38,50,110,.08);
+    --tap:44px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",Roboto,sans-serif;
+    color:var(--ink);
+    background:
+      radial-gradient(1000px 620px at 12% -10%, #e9e4ff 0%, rgba(233,228,255,0) 62%),
+      radial-gradient(900px 560px at 92% 6%, #ffe9f4 0%, rgba(255,233,244,0) 60%),
+      radial-gradient(900px 620px at 50% 110%, #e2f8f1 0%, rgba(226,248,241,0) 62%),
+      linear-gradient(160deg,var(--bg-1),var(--bg-2) 55%,var(--bg-3));
+    background-attachment:fixed; min-height:100%; padding:28px 18px 40px;
+    display:flex; justify-content:center; overflow-x:hidden;
+  }
+  .notes{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0}
+  .notes span{position:absolute;font-size:26px;opacity:.16;color:var(--accent);animation:float 16s ease-in-out infinite}
+  .notes span:nth-child(1){left:6%;top:16%}
+  .notes span:nth-child(2){left:86%;top:24%;animation-delay:-3s;font-size:32px}
+  .notes span:nth-child(3){left:14%;top:72%;animation-delay:-6s;font-size:22px}
+  .notes span:nth-child(4){left:78%;top:78%;animation-delay:-9s}
+  .notes span:nth-child(5){left:48%;top:6%;animation-delay:-11s;font-size:20px}
+  @keyframes float{0%,100%{transform:translateY(0) rotate(-6deg)}50%{transform:translateY(-22px) rotate(8deg)}}
+
+  .app{position:relative;z-index:1;width:100%;max-width:960px}
+  .card{background:var(--card);border:1px solid rgba(230,233,246,.9);border-radius:var(--r-lg);
+        box-shadow:var(--shadow);padding:32px clamp(16px,4vw,40px)}
+  .screen{display:none;animation:fadeUp .38s cubic-bezier(.2,.7,.3,1)}
+  .screen.on{display:block}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+  /* ---------- 首页 ---------- */
+  .hero{text-align:center}
+  .logo{width:78px;height:78px;margin:4px auto 18px;border-radius:26px;display:grid;place-items:center;color:#fff;
+        background:linear-gradient(140deg,var(--accent-2),var(--accent));box-shadow:0 12px 26px rgba(108,92,231,.32);
+        animation:pulse 3.2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+  h1{font-size:clamp(27px,5.2vw,38px);margin:0 0 10px;letter-spacing:2px;font-weight:800;
+     background:linear-gradient(100deg,#6c5ce7,#a06cf0 55%,#ef7aae);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{margin:0 auto;max-width:36em;color:var(--ink-2);line-height:1.85;font-size:15.5px}
+
+  .chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:22px 0 4px}
+  .chip{display:inline-flex;align-items:center;gap:7px;background:var(--accent-soft);color:#5a4bd1;
+        border:1px solid #ded7ff;padding:7px 14px;border-radius:999px;font-size:13.5px;font-weight:600}
+  .chip.green{background:var(--ok-soft);color:#0b7c45;border-color:#c6efdb}
+  .chip.amber{background:var(--warn-soft);color:var(--warn);border-color:var(--warn-line)}
+
+  .block{margin-top:26px}
+  .block > .label{margin:0 0 12px;font-size:13.5px;color:var(--ink-3);letter-spacing:1.5px;font-weight:600}
+
+  .cats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .cat{
+    font:inherit;cursor:pointer;text-align:left;background:#fff;border:2.5px solid var(--line);
+    border-radius:18px;padding:16px 16px 14px;display:flex;flex-direction:column;gap:6px;
+    transition:transform .16s,border-color .2s,background .2s,box-shadow .2s;color:var(--ink);
+  }
+  .cat:hover{transform:translateY(-3px);box-shadow:0 12px 26px rgba(108,92,231,.13);border-color:#c9c0ff}
+  .cat .t{font-size:17px;font-weight:800;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
+  .cat .d{font-size:12.5px;color:var(--ink-3);line-height:1.6}
+  .cat .n{font-size:12.5px;font-weight:700;color:#6b5bd6;background:var(--accent-soft);border-radius:999px;padding:2px 9px;align-self:flex-start}
+  .cat:focus-visible{outline:3px solid #c7bcff;outline-offset:3px}
+  .cat.on{border-color:var(--accent);background:linear-gradient(160deg,#f6f3ff,#fff)}
+  .cat[data-cat="cn"].on{border-color:#e0703a;background:linear-gradient(160deg,#fff6f0,#fff)}
+  .cat[data-cat="west"].on{border-color:#4c7bf0;background:linear-gradient(160deg,#f2f6ff,#fff)}
+
+  .fams{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:14px;min-height:34px}
+  .fam{font:inherit;cursor:pointer;border:1.5px solid var(--line);background:#fff;color:var(--ink-2);
+       border-radius:999px;padding:7px 15px;font-size:13.5px;font-weight:600;min-height:34px;transition:.18s}
+  .fam:hover{border-color:#c9c0ff;color:var(--accent)}
+  .fam.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .fam[disabled]{opacity:.42;cursor:not-allowed}
+  .fam-hint{font-size:12.5px;color:var(--ink-3);text-align:center;margin-top:10px;line-height:1.7}
+
+  .seg{display:inline-flex;background:#f2f3fb;border-radius:14px;padding:4px;gap:4px}
+  .seg button{font:inherit;font-size:14.5px;font-weight:600;color:var(--ink-2);border:0;background:transparent;
+              padding:9px 18px;border-radius:11px;cursor:pointer;min-height:38px;transition:.18s}
+  .seg button.on{background:#fff;color:var(--accent);box-shadow:var(--shadow-sm)}
+
+  .btn{font:inherit;font-weight:700;border:0;cursor:pointer;border-radius:999px;
+       transition:transform .14s,box-shadow .2s,background .2s;
+       min-height:var(--tap);display:inline-flex;align-items:center;justify-content:center;gap:9px}
+  .btn:active{transform:scale(.975)}
+  .btn:focus-visible{outline:3px solid #c7bcff;outline-offset:3px}
+  .btn-primary{background:linear-gradient(135deg,var(--accent-2),var(--accent));color:#fff;
+               padding:16px 46px;font-size:18px;letter-spacing:1px;box-shadow:0 12px 26px rgba(108,92,231,.34)}
+  .btn-primary:hover{box-shadow:0 16px 32px rgba(108,92,231,.42)}
+  .btn-ghost{background:#fff;color:var(--accent);border:2px solid #ddd6ff;padding:13px 26px;font-size:15.5px}
+  .btn-ghost:hover{background:var(--accent-soft)}
+  .btn-soft{background:#f3f4fb;color:var(--ink-2);border:2px solid transparent;padding:13px 24px;font-size:15.5px}
+  .btn-soft:hover{background:#eaeafe}
+  .btn[disabled]{opacity:.42;cursor:not-allowed;transform:none!important;box-shadow:none!important}
+  .cta{margin-top:26px;text-align:center}
+
+  details.panel{margin-top:22px;border-top:1px dashed var(--line);padding-top:14px;font-size:13.5px;color:var(--ink-3);text-align:left}
+  details.panel summary{cursor:pointer;color:var(--ink-2);font-weight:600;list-style:none;display:flex;align-items:center;gap:8px}
+  details.panel summary::-webkit-details-marker{display:none}
+  details.panel summary::before{content:"ⓘ";color:var(--accent)}
+  details.panel p{line-height:1.9;margin:12px 0 0}
+  details.panel code{background:#f4f4fd;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:12.5px;color:#6b5bd6}
+
+  .libbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0 4px;font-size:13px}
+  .legend{display:inline-flex;align-items:center;gap:5px;color:var(--ink-3)}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .dot.real{background:var(--ok)}
+  .dot.syn{background:#e8a33d}
+  .dot.none{background:#c6cbd8}
+  .switch{display:inline-flex;align-items:center;gap:7px;color:var(--ink-2);font-weight:600;cursor:pointer;
+          background:#f7f8fd;border:1px solid var(--line);border-radius:999px;padding:7px 13px}
+  .switch input{accent-color:var(--accent);width:15px;height:15px}
+  .switch.dis{opacity:.5;cursor:not-allowed}
+
+  .libgroup{margin-top:12px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .libgroup > .gh{display:flex;align-items:center;justify-content:space-between;gap:8px;
+                  background:#fafbff;padding:9px 13px;font-size:13px;font-weight:700;color:var(--ink-2)}
+  .libgroup > .gh .h{color:var(--ink-3);font-weight:600;font-size:12.5px}
+  .libitems{display:flex;flex-wrap:wrap;gap:7px;padding:11px 13px}
+  .it{font-size:12.5px;border-radius:999px;padding:5px 11px;border:1px solid var(--line);background:#fff;color:var(--ink-2);
+      display:inline-flex;align-items:center;gap:6px}
+  .it.real{border-color:#c6efdb;background:var(--ok-soft);color:#0b7c45}
+  .it.none{border-color:#e0e3ee;background:#f7f8fc;color:#9aa1b5}
+  .crwrap{max-height:430px;overflow:auto;border:1px solid var(--line);border-radius:14px;margin-top:12px;background:#fff}
+  .crtable{width:100%;border-collapse:collapse;font-size:12.5px}
+  .crtable th,.crtable td{border-bottom:1px solid var(--line);padding:8px 9px;text-align:left;vertical-align:top;color:var(--ink-2);line-height:1.7}
+  .crtable th{color:var(--ink-3);font-weight:700;background:#fafbff;position:sticky;top:0;z-index:1}
+  .crtable tr:last-child td{border-bottom:0}
+  .crtable td.nm{font-weight:700;color:var(--ink);white-space:nowrap}
+  .crtable td.cat{white-space:nowrap;color:var(--ink-3)}
+  .crtable a{color:#4a3fd0;word-break:break-all}
+  .crtag{display:inline-block;font-size:11px;border-radius:999px;padding:1px 8px;
+         border:1px solid #c6efdb;background:var(--ok-soft);color:#0b7c45;white-space:nowrap}
+  .crnote{margin-top:10px;font-size:12.5px;color:var(--ink-3);line-height:1.8}
+
+  footer{text-align:center;color:var(--ink-3);font-size:12.5px;margin-top:18px;line-height:1.8}
+
+  /* ---------- 练习页 ---------- */
+  .top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .top-left{display:flex;align-items:center;gap:10px}
+  .top-right{display:flex;align-items:center;gap:12px;margin-left:auto}
+  .backbtn{
+    display:inline-flex;align-items:center;justify-content:center;gap:4px;
+    width:34px;height:34px;padding:0;border:none;border-radius:10px;cursor:pointer;
+    background:var(--soft, #f1eefb);color:var(--ink-2);
+    font-size:16px;transition:background .18s, transform .18s, color .18s, opacity .18s;
+    flex:none;
+  }
+  .backbtn:hover{background:#e6e0f7;color:var(--accent);transform:translateX(-2px)}
+  .backbtn:active{transform:scale(.94)}
+  .backbtn svg{width:18px;height:18px}
+  .backbtn.dim{opacity:.38;cursor:default}
+  .backbtn.dim:hover{background:var(--soft, #f1eefb);color:var(--ink-2);transform:none}
+  .qnum{font-size:14.5px;font-weight:700;color:var(--ink-2)}
+  .qnum b{color:var(--accent);font-size:20px}
+  .qmeta{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-3);font-weight:600;flex-wrap:wrap}
+  .badge{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;
+         border-radius:999px;padding:5px 12px;border:1px solid}
+  .badge.cn{background:var(--cn-soft);color:var(--cn);border-color:var(--cn-line)}
+  .badge.west{background:var(--west-soft);color:var(--west);border-color:var(--west-line)}
+  .badge.all{background:var(--accent-soft);color:#5a4bd1;border-color:#ded7ff}
+  .bar{height:9px;border-radius:99px;background:#eef0fa;overflow:hidden;margin:0 0 24px}
+  .bar i{display:block;height:100%;width:0;border-radius:99px;
+         background:linear-gradient(90deg,var(--accent-2),#ef7aae);transition:width .4s cubic-bezier(.2,.7,.3,1)}
+
+  .stage{text-align:center}
+  .play-wrap{display:flex;flex-direction:column;align-items:center;gap:11px;margin:4px auto 6px}
+  .play{width:118px;height:118px;border-radius:50%;border:0;cursor:pointer;display:grid;place-items:center;
+        color:#fff;position:relative;background:linear-gradient(140deg,var(--accent-2),var(--accent));
+        box-shadow:0 16px 34px rgba(108,92,231,.35);transition:transform .16s,box-shadow .2s}
+  .play:hover{transform:translateY(-2px);box-shadow:0 20px 40px rgba(108,92,231,.42)}
+  .play:active{transform:scale(.96)}
+  .play:focus-visible{outline:4px solid #cdc4ff;outline-offset:4px}
+  .play.playing{background:linear-gradient(140deg,#ffb457,#f472b6);box-shadow:0 16px 34px rgba(244,114,182,.35)}
+  .play svg{width:46px;height:46px}
+  .play .eq{display:none;align-items:flex-end;gap:5px;height:44px}
+  .play.playing svg{display:none}
+  .play.playing .eq{display:flex}
+  .eq i{width:6px;border-radius:3px;background:#fff;animation:eq .85s ease-in-out infinite}
+  .eq i:nth-child(1){height:16px}.eq i:nth-child(2){height:32px;animation-delay:.12s}
+  .eq i:nth-child(3){height:22px;animation-delay:.24s}.eq i:nth-child(4){height:38px;animation-delay:.36s}
+  .eq i:nth-child(5){height:14px;animation-delay:.48s}
+  @keyframes eq{0%,100%{transform:scaleY(.45)}50%{transform:scaleY(1.05)}}
+  .play-label{font-size:15px;font-weight:700;color:var(--ink-2);min-height:22px}
+  .play-label.busy{color:#e07b2c}
+  .srcnote{font-size:12.5px;font-weight:600;border-radius:999px;padding:4px 12px;border:1px solid}
+  .srcnote.real{background:var(--ok-soft);color:#0b7c45;border-color:#c6efdb}
+  .srcnote.syn{background:var(--warn-soft);color:var(--warn);border-color:var(--warn-line)}
+
+  .options{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:24px 0 4px}
+  .opt{font:inherit;cursor:pointer;text-align:center;background:#fff;border:2.5px solid var(--line);border-radius:var(--r-md);
+       padding:20px 12px 18px;display:flex;flex-direction:column;align-items:center;gap:8px;min-height:146px;
+       justify-content:center;color:var(--ink);transition:transform .16s,border-color .2s,background .2s,box-shadow .2s;position:relative}
+  .opt:hover:not(:disabled){transform:translateY(-3px);border-color:#c3b8ff;box-shadow:0 12px 26px rgba(108,92,231,.14)}
+  .opt:focus-visible{outline:3px solid #c7bcff;outline-offset:3px}
+  .opt svg{width:52px;height:52px;color:var(--accent)}
+  .opt .name{font-size:20px;font-weight:800;letter-spacing:1px}
+  .opt .ofam{font-size:12px;color:var(--ink-3);letter-spacing:.5px}
+  .opt:disabled{cursor:default}
+  .opt .mark{position:absolute;top:10px;right:12px;font-size:18px;font-weight:800;width:26px;height:26px;
+             border-radius:50%;display:none;place-items:center;color:#fff}
+  .opt.right{background:var(--ok-soft);border-color:var(--ok-line)}
+  .opt.right svg{color:var(--ok)}
+  .opt.right .mark{display:grid;background:var(--ok)}
+  .opt.wrong{background:var(--no-soft);border-color:var(--no-line)}
+  .opt.wrong svg{color:var(--no)}
+  .opt.wrong .mark{display:grid;background:var(--no)}
+  .opt.dim{opacity:.5}
+
+  .feedback{margin-top:20px;border-radius:var(--r-md);padding:15px 18px;display:flex;align-items:flex-start;gap:12px;
+            font-size:15px;line-height:1.75;border:1.5px solid transparent;text-align:left;animation:fadeUp .3s ease}
+  .feedback .ic{font-size:21px;flex:none;line-height:1.3}
+  .feedback b{font-size:16.5px;letter-spacing:.5px}
+  .feedback .tip{display:block;margin-top:5px;opacity:.92}
+  .feedback.ok{background:var(--ok-soft);border-color:#c6efdb;color:#0b6b3f}
+  .feedback.no{background:var(--no-soft);border-color:#f8cfcf;color:#b03439}
+  .feedback[hidden]{display:none}
+
+  .actions{display:flex;gap:12px;justify-content:center;margin-top:24px;flex-wrap:wrap}
+  .actions .btn{flex:1 1 170px;max-width:260px}
+
+  /* ---------- 结果页 ---------- */
+  .result{text-align:center}
+  .score-ring{width:168px;height:168px;margin:6px auto 16px;border-radius:50%;display:grid;place-items:center;position:relative;
+              background:conic-gradient(var(--accent) calc(var(--p,0) * 1%), #eceefb 0);transition:background .8s ease}
+  .score-ring::after{content:"";position:absolute;inset:12px;border-radius:50%;background:#fff;
+                     box-shadow:inset 0 2px 10px rgba(38,50,110,.06)}
+  .score-inner{position:relative;z-index:1}
+  .score-inner .p{font-size:40px;font-weight:800;color:var(--accent);line-height:1}
+  .score-inner .t{font-size:13.5px;color:var(--ink-3);margin-top:6px;letter-spacing:1px}
+  .result h2{font-size:23px;margin:0 0 8px;letter-spacing:1px}
+  .result .msg{color:var(--ink-2);font-size:15.5px;margin:0 0 6px;line-height:1.8}
+  .score-line{font-size:16.5px;font-weight:700;margin:14px 0 0;letter-spacing:.5px;display:flex;align-items:center;
+              justify-content:center;gap:10px;flex-wrap:wrap}
+  .score-line em{font-style:normal;color:var(--accent);font-size:25px}
+  .review{margin:24px auto 0;max-width:540px;text-align:left;border-top:1px dashed var(--line);padding-top:14px}
+  .review h3{font-size:13.5px;color:var(--ink-3);font-weight:600;margin:0 0 10px;letter-spacing:1px}
+  .review ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto}
+  .review li{display:flex;align-items:center;gap:10px;font-size:14.5px;background:#fafbff;border:1px solid var(--line);
+             border-radius:12px;padding:10px 14px}
+  .review li .idx{color:var(--ink-3);font-size:13px;min-width:46px}
+  .review li .nm{font-weight:700;flex:1}
+  .review li .st{font-weight:700;font-size:13px}
+  .review li.ok .st{color:var(--ok)}
+  .review li.no .st{color:var(--no)}
+
+  #toast{position:fixed;left:50%;bottom:30px;transform:translate(-50%,20px);z-index:50;background:rgba(30,35,56,.94);
+         color:#fff;padding:13px 22px;border-radius:999px;font-size:14.5px;box-shadow:0 10px 26px rgba(0,0,0,.22);
+         opacity:0;pointer-events:none;transition:.3s;max-width:88vw;text-align:center;line-height:1.5}
+  #toast.on{opacity:1;transform:translate(-50%,0)}
+
+  @media (max-width:640px){
+    body{padding:14px 10px 30px}
+    .card{padding:24px 15px;border-radius:20px}
+    .cats{grid-template-columns:1fr;gap:9px}
+    .cat{flex-direction:row;align-items:center;justify-content:space-between;padding:13px 15px;flex-wrap:wrap}
+    .cat .d{display:none}
+    .play{width:100px;height:100px}
+    .opt{min-height:126px;padding:16px 8px}
+    .opt svg{width:44px;height:44px}
+    .opt .name{font-size:17.5px}
+    .btn-primary{padding:15px 32px;font-size:17px;width:100%}
+    .actions .btn{max-width:none}
+    .notes{display:none}
+    .seg button{padding:9px 13px}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="notes" aria-hidden="true"><span>♪</span><span>♫</span><span>♩</span><span>♬</span><span>♪</span></div>
+
+<div class="app">
+
+  <!-- ===================== 首页 ===================== -->
+  <section class="screen on" id="screen-home">
+    <div class="card hero">
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:40px;height:40px">
+          <path d="M9 18V5l10-2v13"/><circle cx="6.5" cy="18" r="2.6"/><circle cx="16.5" cy="16" r="2.6"/>
+        </svg>
+      </div>
+      <h1>听音识乐器</h1>
+      <p class="sub">
+        每次播放一小段旋律，你来判断这是哪种乐器演奏的。<br />
+        先选练习类别 → 再逐题听辨，答完立刻能看到正确答案和音色特点。
+      </p>
+
+      <div class="chips">
+        <span class="chip" id="chipPool">🎼 题库 0 种乐器</span>
+        <span class="chip green">🎧 每题由你点击播放</span>
+        <span class="chip amber" id="chipSource">音源检测中…</span>
+      </div>
+
+      <div class="block">
+        <p class="label">① 选择练习类别</p>
+        <div class="cats" id="cats">
+          <button class="cat on" type="button" data-cat="all">
+            <span class="t">🎵 全部乐器</span>
+            <span class="d">民族 + 西洋混合出题</span>
+            <span class="n" data-n="all">0 种</span>
+          </button>
+          <button class="cat" type="button" data-cat="cn">
+            <span class="t">🪕 中国民族乐器</span>
+            <span class="d">拉弦 / 弹拨 / 吹管 / 打击</span>
+            <span class="n" data-n="cn">0 种</span>
+          </button>
+          <button class="cat" type="button" data-cat="west">
+            <span class="t">🎻 西洋乐器</span>
+            <span class="d">弦乐 / 木管 / 铜管 / 键盘 / 打击</span>
+            <span class="n" data-n="west">0 种</span>
+          </button>
+        </div>
+
+        <div class="fams" id="fams"></div>
+        <p class="fam-hint" id="famHint"></p>
+      </div>
+
+      <div class="block">
+        <p class="label">② 每轮题数</p>
+        <div class="seg" id="segCount" role="group" aria-label="每轮题数">
+          <button type="button" data-n="6">6 题</button>
+          <button type="button" data-n="10" class="on">10 题</button>
+          <button type="button" data-n="15">15 题</button>
+        </div>
+      </div>
+
+      <div class="cta">
+        <button class="btn btn-primary" id="btnStart">
+          <svg viewBox="0 0 24 24" fill="currentColor" style="width:20px;height:20px"><path d="M8 5.5v13l11-6.5z"/></svg>
+          开始练习
+        </button>
+        <p class="fam-hint" id="startHint"></p>
+      </div>
+
+      <details class="panel" id="libPanel">
+        <summary>题库与音频状态（按演奏方式分组）</summary>
+        <div class="libbar">
+          <span class="legend"><i class="dot real"></i>真实录音</span>
+          <span class="legend"><i class="dot syn"></i>占位合成音</span>
+          <span class="legend"><i class="dot none"></i>暂无音源（不出题）</span>
+          <label class="switch" id="onlyRealWrap"><input type="checkbox" id="onlyReal" /> 只练有真实录音的乐器</label>
+        </div>
+        <div id="libList"></div>
+      </details>
+
+      <details class="panel">
+        <summary>音频资源说明（真实录音 / 占位合成音）</summary>
+        <p>
+          本页<strong>优先播放真实录音</strong>：音频放在与本页同级的 <code>audio/</code> 目录，文件名与题库中该乐器的
+          「音频地址」一致即可（例如 <code>audio/violin.m4a</code>）；探测顺序为
+          <code>.mp3 → .m4a → .wav → .ogg</code>。<br />
+          已内置的真实录音<strong>全部来自 Wikimedia Commons</strong>，并逐条核实了来源页面、作者与授权协议，
+          明细见下方「音频来源与授权」面板。<br />
+          <strong>当前覆盖</strong>：西洋乐器 24 种全部使用真实录音（含你指定的 20 种：小提琴/中提琴/大提琴/低音提琴/竖琴、
+          短笛/长笛/单簧管/双簧管/巴松管、圆号/小号/大号/长号、定音鼓/大鼓/小鼓/三角铁/木琴/钹，
+          另加吉他、萨克斯、架子鼓、钢琴）；<strong>中国民族乐器 28 种</strong>暂未找到合规的真实录音，
+          仍使用各自对应的合成占位音。<br />
+          若某件乐器暂时没有合规素材，页面会播放<strong>该乐器自己对应的合成占位音</strong>（按它的音区、演奏方式、
+          明亮度、揉弦、气声、金属感等参数实时合成），并在界面标注「🎹 占位合成音」——
+          不会拿别的乐器的音频来顶替，也不会静默播放不相关的音频。
+        </p>
+      </details>
+
+      <details class="panel" id="creditPanel">
+        <summary>音频来源与授权（真实录音清单）</summary>
+        <p class="crnote">
+          下表列出页面正在使用的每一段真实录音：来源页面、作者/上传者、授权协议与核实情况。
+          素材出自 <a href="https://commons.wikimedia.org/" target="_blank" rel="noopener">Wikimedia Commons</a>，
+          均为可再利用的公有领域或知识共享（CC）授权。<strong>CC BY / CC BY-SA 类素材要求署名</strong>
+          （BY-SA 还要求相同方式共享），使用时请保留下表信息；若要去掉署名或作商业用途，请先自行复核对应条款。
+        </p>
+        <div id="creditList"></div>
+      </details>
+    </div>
+    <footer>提示：请在有声音的设备上练习，音量别开太小 🎵</footer>
+  </section>
+
+  <!-- ===================== 练习页 ===================== -->
+  <section class="screen" id="screen-quiz">
+    <div class="card">
+      <div class="top">
+        <div class="top-left">
+          <button class="backbtn" id="btnPrev" title="上一题（←）" aria-label="上一题">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+          <div class="qnum">第 <b id="qIndex">1</b> / <span id="qTotal">10</span> 题</div>
+        </div>
+        <div class="top-right">
+          <div class="qmeta">
+            <span class="badge all" id="qCat">全部乐器</span>
+            <span>答对 <b id="qRight" style="color:var(--ok)">0</b> · 正确率 <b id="qRate">0%</b></span>
+          </div>
+          <button class="backbtn homebtn" id="btnQuizHome" title="返回主界面（Esc）" aria-label="返回主界面">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V20a1 1 0 0 0 1 1H10v-5.5h4V21h3.5a1 1 0 0 0 1-1V9.5"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="bar"><i id="qBar"></i></div>
+
+      <div class="stage">
+        <div class="play-wrap">
+          <button class="play" id="btnPlay" aria-label="播放当前题目音频">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" stroke="none"/>
+              <path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/>
+            </svg>
+            <span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+          </button>
+          <div class="play-label" id="playLabel">点击播放音色</div>
+          <div class="srcnote syn" id="srcNote" hidden></div>
+        </div>
+
+        <div class="options" id="options"></div>
+        <div class="feedback" id="feedback" hidden></div>
+
+        <div class="actions">
+          <button class="btn btn-soft" id="btnReplay">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px">
+              <path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>
+            </svg>
+            再听一次
+          </button>
+          <button class="btn btn-ghost" id="btnNext" disabled>下一题 →</button>
+        </div>
+      </div>
+    </div>
+    <footer>🎵 每题只播放你点击的那一次，不会自动连播　·　快捷键：空格 播放、1/2 选项、← 上一题、Esc 返回主页</footer>
+  </section>
+
+  <!-- ===================== 结果页 ===================== -->
+  <section class="screen" id="screen-result">
+    <div class="card result">
+      <div class="score-ring" id="ring">
+        <div class="score-inner"><div class="p" id="rPct">0%</div><div class="t">正确率</div></div>
+      </div>
+      <h2 id="rTitle">练习完成</h2>
+      <p class="msg" id="rMsg"></p>
+      <p class="score-line">本轮成绩：<em id="rScore">0 / 0</em> <span class="badge all" id="rCat">全部乐器</span></p>
+
+      <div class="review" id="reviewWrap" hidden>
+        <h3>答题回顾</h3>
+        <ul id="reviewList"></ul>
+      </div>
+
+      <div class="actions" style="margin-top:28px">
+        <button class="btn btn-primary" id="btnAgain" style="flex:1 1 200px">再练一轮（同类）</button>
+        <button class="btn btn-soft" id="btnHome" style="flex:0 1 170px">返回选择类别</button>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ============================================================
+   1. 图标（统一 64×64 线性风格，按乐器组归类）
+   ============================================================ */
+const ICONS = {
+  piano:`<rect x="7" y="15" width="50" height="34" rx="6"/><path d="M14 33v16M21 33v16M28 33v16M36 33v16M43 33v16M50 33v16"/><rect x="11.5" y="15" width="4.5" height="18" rx="1.5" fill="currentColor" stroke="none"/><rect x="18.5" y="15" width="4.5" height="18" rx="1.5" fill="currentColor" stroke="none"/><rect x="33" y="15" width="4.5" height="18" rx="1.5" fill="currentColor" stroke="none"/><rect x="40" y="15" width="4.5" height="18" rx="1.5" fill="currentColor" stroke="none"/><rect x="47" y="15" width="4.5" height="18" rx="1.5" fill="currentColor" stroke="none"/>`,
+  bow:`<path d="M32 21c-8 0-12 4-12 9 0 3 3 4 3 6s-3 3-3 7c0 5 5 8 12 8s12-3 12-8c0-4-3-5-3-7s3-3 3-6c0-5-4-9-12-9z"/><path d="M32 21V9"/><rect x="28" y="5" width="8" height="5" rx="2"/><path d="M27 34v6M37 34v6"/><path d="M30.6 24v24M33.4 24v24"/>`,
+  pluck:`<rect x="29.6" y="4" width="4.8" height="17" rx="1.8"/><path d="M24.5 25.5a9 9 0 0 1 15 0c0 3-2.2 4.3-2.2 6.4s2.2 3.4 2.2 6.4a11.8 11.8 0 0 1-23.6 0c0-3 2.2-4.3 2.2-6.4s-2.2-3.4-2.2-6.4a9 9 0 0 1 8.6-.6z"/><circle cx="32" cy="39" r="4.4"/><path d="M32 21v13"/>`,
+  wind:`<rect x="5" y="27" width="54" height="9" rx="4.5"/><path d="M14 27v9"/><circle cx="24" cy="31.5" r="2.2" fill="currentColor" stroke="none"/><circle cx="34" cy="31.5" r="2.2" fill="currentColor" stroke="none"/><circle cx="44" cy="31.5" r="2.2" fill="currentColor" stroke="none"/><path d="M5 31.5H3"/>`,
+  reed:`<rect x="28" y="20" width="6.5" height="32" rx="3.2"/><path d="M29.5 20l2-9 2 9"/><circle cx="35" cy="28" r="2.5"/><circle cx="35" cy="37" r="2.5"/><circle cx="35" cy="46" r="2.5"/><path d="M29 52h4.5"/>`,
+  brass:`<rect x="9" y="31" width="30" height="7" rx="3.5"/><path d="M39 25h5l9-6v26l-9-6h-5z"/><rect x="17" y="23" width="4.5" height="9" rx="1.6"/><rect x="24" y="23" width="4.5" height="9" rx="1.6"/><rect x="31" y="23" width="4.5" height="9" rx="1.6"/><circle cx="19.2" cy="20.5" r="2.4"/><circle cx="26.2" cy="20.5" r="2.4"/><circle cx="33.2" cy="20.5" r="2.4"/>`,
+  harp:`<path d="M14 54V18"/><path d="M14 18C34 20 46 34 48 54"/><path d="M14 54h34"/><path d="M20 24v30M26 28v26M32 33v21M38 39v15M44 46v8"/>`,
+  drum:`<ellipse cx="32" cy="24" rx="20" ry="7"/><path d="M12 24v14c0 4 9 7 20 7s20-3 20-7V24"/><path d="M20 19l10-10M34 17l8-9"/>`,
+  gong:`<circle cx="30" cy="36" r="20"/><circle cx="30" cy="36" r="6"/><path d="M30 16v-6"/><path d="M18 13l-3-5M42 13l3-5"/>`,
+  cymbal:`<path d="M8 36c0-7 10-11 22-11s22 4 22 11-10 11-22 11S8 43 8 36z"/><path d="M30 25v-9"/><circle cx="30" cy="13" r="3.4"/>`,
+  wood:`<path d="M13 43c0-9 8-16 19-16s19 7 19 16c0 5-4 8-9 8H22c-5 0-9-3-9-8z"/><path d="M32 27v-7"/><path d="M49 20l7-7"/>`,
+  bell:`<path d="M20 47c0-15 4-23 12-23s12 8 12 23z"/><path d="M15 47h34"/><path d="M32 24v-6"/><circle cx="32" cy="15" r="3"/>`,
+  kit:`<ellipse cx="31" cy="32" rx="18" ry="6"/><path d="M13 32v13c0 4 8 6.5 18 6.5s18-2.5 18-6.5V32"/><path d="M50 17c-7 4-11 8-12 13"/><ellipse cx="52" cy="14" rx="9" ry="3"/>`,
+  note:`<path d="M9 18V5l10-2v13"/><circle cx="6.5" cy="18" r="2.6"/><circle cx="16.5" cy="16" r="2.6"/>`,
+  triangle:`<path d="M32 13 55 52H9z"/><path d="M32 13V6"/><path d="M43 31 57 23"/>`,
+  xylophone:`<rect x="9" y="23" width="46" height="6.5" rx="3.2"/><rect x="15" y="33" width="34" height="6.5" rx="3.2"/><rect x="21" y="43" width="22" height="6.5" rx="3.2"/><path d="M13 17l5-8M51 17l-5-8"/>`,
+  timpani:`<ellipse cx="32" cy="29" rx="20" ry="6"/><path d="M12 29c0 13 9 22 20 22s20-9 20-22"/><path d="M19 34 9 48M45 34l10 14"/><path d="M32 23V13"/>`
+};
+
+/* ============================================================
+   2. 乐器库（题库）—— 一行一件，按演奏方式分组，便于继续扩充
+   ------------------------------------------------------------
+   id    唯一标识，也是默认音频文件名（audio/<file>）
+   name  乐器名称（选项上显示）
+   cat   'cn' 中国民族乐器 | 'west' 西洋乐器
+   fam   演奏方式分组
+   file  音频地址（相对本页，默认 audio/ 下同名文件；同时会尝试同名 .wav）
+   icon  图标 key
+   base  该乐器典型音区（合成占位音用，真实录音不受影响）
+   gen   合成引擎：bow 拉弦 / pluck 弹拨击弦 / blow 吹管 / hit 打击 / kit 架子鼓
+   p     合成参数（有真实录音时不生效）
+          bright 明亮度0~1 · dec 衰减秒 · sus 持续电平 · vib [速率,音分]
+          fric 弓弦摩擦 · air 气声 · reed 簧片感 · nasal 鼻音共鸣
+          bend 拨弦后音高下滑(半音) · drop 起音下坠(半音) · noise 噪声量 · band 噪声频段
+          metal 金属非谐分音 · bell 钟类泛音 · wood 木质短促 · inharm 钢琴非谐性
+   motif 可选：旋律动机 sus / pluck / arp / slide / quiet / luo
+   tip   音色说明（答题后作为提示）
+   ============================================================ */
+const LIB = [
+  /* ===== 中国民族乐器 · 拉弦 ===== */
+  {id:'erhu', name:'二胡', cat:'cn', fam:'拉弦', file:'erhu.mp3', icon:'bow', base:'D4',
+   gen:'bow', p:{bright:.35, sus:.72, dec:.2, vib:[6.6,17], fric:.06, nasal:.5},
+   tip:'二胡：两根弦，弓弦摩擦感明显，揉弦幅度大，音色像人声一样如泣如诉。'},
+  {id:'gaohu', name:'高胡', cat:'cn', fam:'拉弦', file:'gaohu.mp3', icon:'bow', base:'A4',
+   gen:'bow', p:{bright:.72, sus:.72, dec:.18, vib:[6.9,14], fric:.05, nasal:.4},
+   tip:'高胡：二胡的“高音版”，定弦更高、音色明亮清脆，广东音乐里的主奏乐器。'},
+  {id:'zhonghu', name:'中胡', cat:'cn', fam:'拉弦', file:'zhonghu.mp3', icon:'bow', base:'G3',
+   gen:'bow', p:{bright:.26, sus:.7, dec:.22, vib:[6.2,15], fric:.06, nasal:.55},
+   tip:'中胡：音区比二胡低，音色浑厚略带沙哑，常在中声部做和声支撑。'},
+  {id:'banhu', name:'板胡', cat:'cn', fam:'拉弦', file:'banhu.mp3', icon:'bow', base:'D5',
+   gen:'bow', p:{bright:.86, sus:.7, dec:.16, vib:[7.4,12], fric:.05, nasal:.35},
+   tip:'板胡：琴筒蒙木板，音色高亢明亮、穿透力强，是梆子戏的主要伴奏乐器。'},
+  {id:'jinghu', name:'京胡', cat:'cn', fam:'拉弦', file:'jinghu.mp3', icon:'bow', base:'G4',
+   gen:'bow', p:{bright:.92, sus:.68, dec:.15, vib:[7.8,20], fric:.07, nasal:.6},
+   tip:'京胡：京剧主奏乐器，琴筒小、定弦高，音色清脆锋利、穿透力强。'},
+  {id:'matouqin', name:'马头琴', cat:'cn', fam:'拉弦', file:'matouqin.mp3', icon:'bow', base:'F3',
+   gen:'bow', p:{bright:.22, sus:.8, dec:.26, vib:[5.0,22], fric:.12, nasal:.5},
+   tip:'马头琴：蒙古族乐器，音色低沉辽阔，常带沙沙的摩擦声，模仿马嘶与风声。'},
+
+  /* ===== 中国民族乐器 · 弹拨 ===== */
+  {id:'guqin', name:'古琴', cat:'cn', fam:'弹拨', file:'guqin.mp3', icon:'pluck', base:'C3',
+   gen:'pluck', p:{bright:.32, dec:2.8}, motif:'quiet',
+   tip:'古琴：音色深沉内敛、余音悠长，按弦滑动产生滑音，气质安静文雅。'},
+  {id:'pipa', name:'琵琶', cat:'cn', fam:'弹拨', file:'pipa.mp3', icon:'pluck', base:'C4',
+   gen:'pluck', p:{bright:.72, dec:1.3, bend:.35},
+   tip:'琵琶：颗粒感强、清脆有力，技巧丰富，长轮指如“大珠小珠落玉盘”。'},
+  {id:'guzheng', name:'古筝', cat:'cn', fam:'弹拨', file:'guzheng.mp3', icon:'pluck', base:'D4',
+   gen:'pluck', p:{bright:.78, dec:2.2, bend:.5},
+   tip:'古筝：二十一弦，音色明亮华丽，拨弦后常有音高下滑的按音，余韵绵长。'},
+  {id:'yangqin', name:'扬琴', cat:'cn', fam:'弹拨', file:'yangqin.mp3', icon:'pluck', base:'C4',
+   gen:'pluck', p:{bright:.88, dec:.9},
+   tip:'扬琴：用琴竹敲弦发声，音色清脆明亮、余音不长，能同时奏出和音。'},
+  {id:'ruan', name:'阮', cat:'cn', fam:'弹拨', file:'ruan.mp3', icon:'pluck', base:'G3',
+   gen:'pluck', p:{bright:.45, dec:1.2},
+   tip:'阮：弹拨乐器，音色圆润饱满、不刺耳，常在中低音区做和声铺垫。'},
+  {id:'sanxian', name:'三弦', cat:'cn', fam:'弹拨', file:'sanxian.mp3', icon:'pluck', base:'A3',
+   gen:'pluck', p:{bright:.6, dec:.7},
+   tip:'三弦：共鸣箱蒙蛇皮，音色硬朗有弹性、带一点鼓声，多用于说唱伴奏。'},
+  {id:'liuqin', name:'柳琴', cat:'cn', fam:'弹拨', file:'liuqin.mp3', icon:'pluck', base:'A4',
+   gen:'pluck', p:{bright:.94, dec:1.0, bend:.3},
+   tip:'柳琴：形似琵琶但更小，音域高，音色清脆明亮，常充当民乐队的高音声部。'},
+  {id:'yueqin', name:'月琴', cat:'cn', fam:'弹拨', file:'yueqin.mp3', icon:'pluck', base:'G4',
+   gen:'pluck', p:{bright:.8, dec:.65},
+   tip:'月琴：圆月形音箱，音色清脆短促、干净利落，常用于京剧和民乐合奏。'},
+  {id:'konghou', name:'箜篌', cat:'cn', fam:'弹拨', file:'konghou.mp3', icon:'harp', base:'C4',
+   gen:'pluck', p:{bright:.55, dec:2.8}, motif:'arp',
+   tip:'箜篌：中国古老的竖琴类乐器，音色柔和流畅、余音长，适合琶音与滑行音。'},
+
+  /* ===== 中国民族乐器 · 吹管 ===== */
+  {id:'dizi', name:'笛子', cat:'cn', fam:'吹管', file:'dizi.mp3', icon:'wind', base:'D5',
+   gen:'blow', p:{bright:.8, air:.5, reed:0, vib:[5.8,10], sus:.8, nasal:.2},
+   tip:'笛子：贴竹膜发声，音色明亮清脆、穿透力强，常见颤音和滑音。'},
+  {id:'xiao', name:'箫', cat:'cn', fam:'吹管', file:'xiao.mp3', icon:'wind', base:'D4',
+   gen:'blow', p:{bright:.3, air:.78, reed:0, vib:[4.6,6], sus:.8, nasal:.15},
+   tip:'箫：竖吹，音色低沉柔和、气声明显、音量不大，气质悠远安静。'},
+  {id:'suona', name:'唢呐', cat:'cn', fam:'吹管', file:'suona.mp3', icon:'reed', base:'C5',
+   gen:'blow', p:{bright:.85, air:.2, reed:.9, vib:[6.4,22], sus:.75, nasal:.6},
+   tip:'唢呐：音量很大，音色高亢尖锐、带浓重鼻音，喜庆场面的“主角”。'},
+  {id:'sheng', name:'笙', cat:'cn', fam:'吹管', file:'sheng.mp3', icon:'reed', base:'A4',
+   gen:'blow', p:{bright:.55, air:.3, reed:.7, vib:[5.2,7], sus:.9, nasal:.5},
+   tip:'笙：多根簧管同时发声，音色柔和明亮、自带和音共鸣，可以持续吹奏。'},
+  {id:'hulusi', name:'葫芦丝', cat:'cn', fam:'吹管', file:'hulusi.mp3', icon:'wind', base:'Bb4',
+   gen:'blow', p:{bright:.4, air:.5, reed:.5, vib:[5.0,9], sus:.85, nasal:.45},
+   tip:'葫芦丝：葫芦做共鸣箱，音色柔和圆润，常带一点点“嗡嗡”的共鸣声。'},
+  {id:'bawu', name:'巴乌', cat:'cn', fam:'吹管', file:'bawu.mp3', icon:'wind', base:'E4',
+   gen:'blow', p:{bright:.32, air:.55, reed:.55, vib:[5.0,8], sus:.85, nasal:.5},
+   tip:'巴乌：横吹的簧管乐器，音色柔美偏暗、带鼻音，比葫芦丝更低沉。'},
+  {id:'guanzi', name:'管子', cat:'cn', fam:'吹管', file:'guanzi.mp3', icon:'reed', base:'G4',
+   gen:'blow', p:{bright:.6, air:.3, reed:.95, vib:[6.0,14], sus:.8, nasal:.55},
+   tip:'管子：双簧片发声，音色粗犷苍凉、力度变化大，常表现悲壮的情绪。'},
+
+  /* ===== 中国民族乐器 · 打击 ===== */
+  {id:'tanggu', name:'堂鼓', cat:'cn', fam:'打击', file:'tanggu.mp3', icon:'drum', base:'G2',
+   gen:'hit', p:{noise:.45, band:320, dec:.8, drop:6},
+   tip:'堂鼓：低沉厚实的鼓声，敲击后音高快速下坠，是民乐合奏的节奏基础。'},
+  {id:'paigu', name:'排鼓', cat:'cn', fam:'打击', file:'paigu.mp3', icon:'drum', base:'C3',
+   gen:'hit', p:{noise:.4, band:520, dec:.45, drop:4},
+   tip:'排鼓：一组音高不同的小鼓，声音短促有力、音高更高，常用于热闹的鼓段。'},
+  {id:'luo', name:'锣', cat:'cn', fam:'打击', file:'luo.mp3', icon:'gong', base:'D3',
+   gen:'hit', p:{noise:.5, band:900, dec:3.4, drop:-1.2, metal:1, bell:1}, motif:'luo',
+   tip:'锣：“咣”的一声，金属感强、余音很长，敲击后音高还会轻微上扬。'},
+  {id:'bo', name:'钹', cat:'cn', fam:'打击', file:'bo.mp3', icon:'cymbal', base:'A3',
+   gen:'hit', p:{noise:.78, band:5200, dec:1.1, metal:.9},
+   tip:'钹：两片铜片相击，声音清脆刺耳、金属摩擦感强，尾巴短而亮。'},
+  {id:'muyu', name:'木鱼', cat:'cn', fam:'打击', file:'muyu.mp3', icon:'wood', base:'A5',
+   gen:'hit', p:{noise:.3, band:2400, dec:.18, drop:2, wood:1},
+   tip:'木鱼：木制短促的“笃笃”声，音色结实几乎没有余音，常用于稳定节拍。'},
+  {id:'bianzhong', name:'编钟', cat:'cn', fam:'打击', file:'bianzhong.mp3', icon:'bell', base:'C5',
+   gen:'hit', p:{noise:.12, band:1800, dec:4.2, metal:1, bell:1}, motif:'luo',
+   tip:'编钟：青铜钟体，音色宏大庄严、泛音丰富，余音拖得很长。'},
+
+  /* ===== 西洋乐器 · 弦乐器 ===== */
+  {id:'violin', name:'小提琴', cat:'west', fam:'弦乐器', file:'violin.mp3', icon:'bow', base:'A4',
+   gen:'bow', p:{bright:.6, sus:.74, dec:.18, vib:[5.6,9], fric:.045, nasal:.3},
+   tip:'小提琴：弓弦乐器，音色明亮连贯，揉弦让音高轻微波动，高音区格外辉煌。'},
+  {id:'viola', name:'中提琴', cat:'west', fam:'弦乐器', file:'viola.mp3', icon:'bow', base:'D4',
+   gen:'bow', p:{bright:.42, sus:.74, dec:.2, vib:[5.3,8], fric:.05, nasal:.35},
+   tip:'中提琴：比小提琴低五度，音色更暗、更含蓄，像柔和的女中音。'},
+  {id:'cello', name:'大提琴', cat:'west', fam:'弦乐器', file:'cello.mp3', icon:'bow', base:'C3',
+   gen:'bow', p:{bright:.3, sus:.78, dec:.22, vib:[4.9,8], fric:.05, nasal:.4},
+   tip:'大提琴：音区低沉厚实，接近人声的男中音，温暖而有分量。'},
+  {id:'doublebass', name:'低音提琴', cat:'west', fam:'弦乐器', file:'doublebass.mp3', icon:'bow', base:'F2',
+   gen:'bow', p:{bright:.16, sus:.8, dec:.26, vib:[4.3,6], fric:.07, nasal:.45},
+   tip:'低音提琴：弦乐里最低最庞大的，声音粗壮浑厚，是乐队的低音地基。'},
+  {id:'harp', name:'竖琴', cat:'west', fam:'弦乐器', file:'harp.mp3', icon:'harp', base:'C4',
+   gen:'pluck', p:{bright:.55, dec:2.8}, motif:'arp',
+   tip:'竖琴：四十七根弦，用手指拨奏，音色柔和晶莹、余音长，琶音像流水一样。'},
+  {id:'guitar', name:'吉他', cat:'west', fam:'弦乐器', file:'guitar.mp3', icon:'pluck', base:'G3',
+   gen:'pluck', p:{bright:.5, dec:1.6, inharm:.02}, motif:'pluck',
+   tip:'吉他：六根弦用手指或拨片拨奏，音色温暖圆润，颗粒感清晰。'},
+
+  /* ===== 西洋乐器 · 木管乐器 ===== */
+  {id:'piccolo', name:'短笛', cat:'west', fam:'木管乐器', file:'piccolo.mp3', icon:'wind', base:'C6',
+   gen:'blow', p:{bright:.88, air:.5, reed:0, vib:[5.8,9], sus:.85, nasal:.1},
+   tip:'短笛：长笛家族里最小的一员，音区比长笛高整整一个八度，音色尖亮、穿透力极强。'},
+  {id:'flute', name:'长笛', cat:'west', fam:'木管乐器', file:'flute.mp3', icon:'wind', base:'D5',
+   gen:'blow', p:{bright:.62, air:.62, reed:0, vib:[5.1,5], sus:.85, nasal:.12},
+   tip:'长笛：木管乐器，音色纯净透亮、带空气感，起音柔和没有敲击声。'},
+  {id:'clarinet', name:'单簧管', cat:'west', fam:'木管乐器', file:'clarinet.mp3', icon:'reed', base:'D4',
+   gen:'blow', p:{bright:.45, air:.28, reed:.9, vib:[5.0,6], sus:.86, nasal:.35},
+   tip:'单簧管：单簧片发声，低音区浑厚、高音区明亮，音色圆润灵活。'},
+  {id:'oboe', name:'双簧管', cat:'west', fam:'木管乐器', file:'oboe.mp3', icon:'reed', base:'Bb4',
+   gen:'blow', p:{bright:.5, air:.35, reed:.92, vib:[5.2,7], sus:.85, nasal:.7},
+   tip:'双簧管：双簧片发声，音色带明显鼻音、比较纤细，常吹抒情的独奏旋律。'},
+  {id:'bassoon', name:'巴松管', cat:'west', fam:'木管乐器', file:'bassoon.mp3', icon:'reed', base:'G2',
+   gen:'blow', p:{bright:.24, air:.3, reed:.86, vib:[4.8,6], sus:.86, nasal:.45},
+   tip:'巴松管（大管）：双簧片的低音木管，管身很长，音色低沉浑厚、带一点干涩的木质沙哑。'},
+  {id:'saxophone', name:'萨克斯', cat:'west', fam:'木管乐器', file:'saxophone.mp3', icon:'reed', base:'Bb3',
+   gen:'blow', p:{bright:.55, air:.4, reed:.8, vib:[5.4,10], sus:.85, nasal:.55},
+   tip:'萨克斯：铜制的木管乐器，音色介于木管与铜管之间，圆润华丽又带一点沙哑。'},
+
+  /* ===== 西洋乐器 · 铜管乐器 ===== */
+  {id:'frenchhorn', name:'圆号', cat:'west', fam:'铜管乐器', file:'frenchhorn.mp3', icon:'brass', base:'A3',
+   gen:'blow', p:{bright:.34, air:.28, reed:.6, vib:[4.9,6], sus:.9, nasal:.4, brass:1},
+   tip:'圆号：铜管里音色最柔和的，管身盘绕很长，声音圆润含蓄，常在中声部做和声。'},
+  {id:'trumpet', name:'小号', cat:'west', fam:'铜管乐器', file:'trumpet.mp3', icon:'brass', base:'G4',
+   gen:'blow', p:{bright:.78, air:.2, reed:.6, vib:[5.6,6], sus:.85, nasal:.25, brass:1},
+   tip:'小号：铜管乐器，音色辉煌有金属感、力量十足，常演奏嘹亮的高音。'},
+  {id:'trombone', name:'长号', cat:'west', fam:'铜管乐器', file:'trombone.mp3', icon:'brass', base:'F3',
+   gen:'blow', p:{bright:.6, air:.22, reed:.65, vib:[5.2,5], sus:.88, nasal:.3, brass:1},
+   motif:'slide',
+   tip:'长号：靠伸缩拉管改变音高，音色庄严饱满，滑音非常明显。'},
+  {id:'tuba', name:'大号', cat:'west', fam:'铜管乐器', file:'tuba.mp3', icon:'brass', base:'D2',
+   gen:'blow', p:{bright:.2, air:.25, reed:.6, vib:[4.6,4], sus:.9, nasal:.2, brass:1},
+   tip:'大号：铜管家族里体积最大、音区最低的，音色宽厚饱满、笨重有分量，是铜管组的低音地基。'},
+
+  /* ===== 西洋乐器 · 打击乐器 ===== */
+  {id:'timpani', name:'定音鼓', cat:'west', fam:'打击乐器', file:'timpani.mp3', icon:'timpani', base:'D2',
+   gen:'hit', p:{noise:.32, band:150, dec:1.5, drop:2},
+   tip:'定音鼓：有明确音高的鼓，蒙皮张力可以调节，声音低沉饱满、余音较长。'},
+  {id:'bassdrum', name:'大鼓', cat:'west', fam:'打击乐器', file:'bassdrum.mp3', icon:'drum', base:'E1',
+   gen:'hit', p:{noise:.6, band:85, dec:1.0, drop:9},
+   tip:'大鼓（大军鼓）：直径很大的双面鼓，声音极低、松软浑厚，几乎没有音高感。'},
+  {id:'snaredrum', name:'小鼓', cat:'west', fam:'打击乐器', file:'snaredrum.mp3', icon:'drum', base:'D3',
+   gen:'hit', p:{noise:.85, band:1900, dec:.3, drop:2},
+   tip:'小鼓（军鼓）：底面装有响弦，声音干脆明亮，有“沙沙”的金属颗粒感。'},
+  {id:'triangle', name:'三角铁', cat:'west', fam:'打击乐器', file:'triangle.mp3', icon:'triangle', base:'A6',
+   gen:'hit', p:{noise:.25, band:6200, dec:2.6, metal:1, bell:1},
+   tip:'三角铁：一根弯成三角形的钢棒，用金属棒敲击，声音极高、清亮透明、余音悠长。'},
+  {id:'xylophone', name:'木琴', cat:'west', fam:'打击乐器', file:'xylophone.mp3', icon:'xylophone', base:'C5',
+   gen:'hit', p:{noise:.15, band:3200, dec:.5, wood:1},
+   tip:'木琴：一排长短不同的硬木条，用琴槌敲击发声，音色清脆干硬、颗粒分明、几乎没有余音。'},
+  {id:'cymbals', name:'钹（管弦乐）', cat:'west', fam:'打击乐器', file:'cymbals.mp3', icon:'cymbal', base:'C4',
+   gen:'hit', p:{noise:.85, band:6500, dec:2.2, metal:1},
+   tip:'钹（对镲）：两片圆形铜片相击，或单手持槌滚奏，声音响亮、高频泛音极丰富。'},
+  {id:'drumkit', name:'架子鼓', cat:'west', fam:'打击乐器', file:'drumkit.mp3', icon:'kit', base:'—',
+   gen:'kit', p:{},
+   tip:'架子鼓：把大鼓、小鼓、嗵鼓和镲片组合在一套里，靠手脚并用打出各种节奏型。'},
+
+  /* ===== 西洋乐器 · 键盘乐器 ===== */
+  {id:'piano', name:'钢琴', cat:'west', fam:'键盘乐器', file:'piano.mp3', icon:'piano', base:'C4',
+   gen:'pluck', p:{bright:.62, dec:2.4, inharm:.05},
+   tip:'钢琴：音域最宽，音头清脆有敲击感，余音自然衰减，能同时奏出很多音。'},
+];
+
+/* ============================================================
+   3. 合成引擎（真实录音缺失时的「占位合成音」）
+   —— 依据乐器音区 / 演奏方式 / 明亮度 / 揉弦 / 气声 / 金属感等实时生成
+   ============================================================ */
+const Sound = (() => {
+  let ctx = null, noiseBuf = null, verb = null, wet = null;
+  let active = null, timer = null;
+
+  function ensure(){
+    if (!ctx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) throw new Error('no-webaudio');
+      ctx = new AC();
+      const len = Math.floor(ctx.sampleRate * 1.5);
+      noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+
+      const rl = Math.floor(ctx.sampleRate * 1.4);
+      const ir = ctx.createBuffer(2, rl, ctx.sampleRate);
+      for (let ch = 0; ch < 2; ch++){
+        const c = ir.getChannelData(ch);
+        for (let i = 0; i < rl; i++) c[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / rl, 3.1);
+      }
+      verb = ctx.createConvolver(); verb.buffer = ir;
+      wet = ctx.createGain(); wet.gain.value = 0.55;
+      verb.connect(wet); wet.connect(ctx.destination);
+    }
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+
+  function noise(t0, dur, band, q, gain, dest, bag, hold){
+    const n = ctx.createBufferSource();
+    n.buffer = noiseBuf; n.loop = true;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass'; f.frequency.value = band; f.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(gain, t0 + (hold || 0.004));
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    n.connect(f); f.connect(g); g.connect(dest);
+    n.start(t0); n.stop(t0 + dur + 0.05);
+    bag.push(n, f, g);
+    return g;
+  }
+
+  function vibrato(oscs, rate, cents, t0, dur, bag){
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine'; lfo.frequency.value = rate;
+    lfo.frequency.setValueAtTime(rate * 0.45, t0);
+    lfo.frequency.linearRampToValueAtTime(rate, t0 + Math.min(0.5, dur));
+    const lg = ctx.createGain(); lg.gain.value = cents;
+    lfo.connect(lg);
+    oscs.forEach(o => lg.connect(o.detune));
+    lfo.start(t0); lfo.stop(t0 + dur + 0.4);
+    bag.push(lfo, lg);
+  }
+
+  // 加性音色：按谐波衰减与数量构造分音
+  function additive(freq, t0, life, spec, dest, bag){
+    const N = spec.N, tilt = spec.tilt, peak = spec.peak;
+    const gains = [];
+    let sum = 0;
+    for (let k = 1; k <= N; k++){
+      let g = Math.pow(k, -tilt);
+      if (spec.reed) g *= (k % 2 === 1) ? (1 + spec.reed * 0.9) : (1 - spec.reed * 0.55);
+      if (k === 1 && spec.fundBoost) g *= spec.fundBoost;
+      g = Math.max(g, 0);
+      gains.push(g); sum += g;
+    }
+    const oscs = [];
+    for (let k = 1; k <= N; k++){
+      const g = gains[k - 1] / (sum || 1);
+      if (g < 0.004) continue;
+      const layers = (k === 1 && spec.chorus) ? 2 : 1;
+      for (let L = 0; L < layers; L++){
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.value = freq * k;
+        if (spec.bend){
+          o.frequency.setValueAtTime(freq * k * Math.pow(2, spec.bend / 12), t0);
+          o.frequency.exponentialRampToValueAtTime(Math.max(20, freq * k), t0 + Math.min(0.35, life * 0.5));
+        }
+        if (spec.glideFrom){
+          o.frequency.setValueAtTime(spec.glideFrom * k, t0);
+          o.frequency.exponentialRampToValueAtTime(Math.max(20, freq * k), t0 + Math.min(0.28, life));
+        }
+        o.detune.value = layers === 2 ? (L ? 6 : -6) : 0;
+        const og = ctx.createGain();
+        og.gain.value = peak * g / layers;
+        o.connect(og); og.connect(dest);
+        o.start(t0); o.stop(t0 + life + 0.35);
+        bag.push(o, og); oscs.push(o);
+      }
+    }
+    return oscs;
+  }
+
+  function renderNote(freq, t0, dur, inst, dest, bag, glideFrom){
+    const P = inst.p || {};
+    const bright = P.bright != null ? P.bright : 0.5;
+    const gen = inst.gen;
+
+    if (gen === 'pluck' || gen === 'keys'){
+      const dec = P.dec != null ? P.dec : 1.2;
+      const life = Math.max(dur, dec);
+      const N = Math.min(14, 3 + Math.round(bright * 9));
+      additive(freq, t0, life, {
+        N, tilt: 1.35 + (1 - bright) * 1.9, peak: 0.55,
+        bend: P.bend || 0, chorus: true, glideFrom
+      }, dest, bag);
+      return life;
+    }
+
+    if (gen === 'bow'){
+      const dec = P.dec != null ? P.dec : 0.2;
+      const A = 0.09 + (1 - bright) * 0.10;
+      const life = dur + A + 0.35;
+      const N = Math.min(16, 5 + Math.round(bright * 11));
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass'; lp.Q.value = 1;
+      lp.frequency.setValueAtTime(420 + bright * 1500, t0);
+      lp.frequency.linearRampToValueAtTime(900 + bright * 4200, t0 + A + dec);
+      lp.connect(dest); bag.push(lp);
+      const oscs = additive(freq, t0, life, {
+        N, tilt: 1.0 + (1 - bright) * 1.75, peak: 0.42, chorus: true, glideFrom
+      }, lp, bag);
+      if (P.vib) vibrato(oscs, P.vib[0], P.vib[1], t0, dur, bag);
+      if (P.fric) noise(t0, 0.17, 1300 + bright * 1600, 1.1, P.fric, dest, bag, 0.012);
+      return life;
+    }
+
+    if (gen === 'blow'){
+      const A = 0.05 + (1 - bright) * 0.05;
+      const life = dur + A + 0.3;
+      const N = Math.min(14, 4 + Math.round(bright * 10));
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass'; lp.Q.value = 1 + (P.nasal || 0) * 2.2;
+      if (P.brass){
+        lp.frequency.setValueAtTime(600, t0);
+        lp.frequency.linearRampToValueAtTime(900 + bright * 5200, t0 + 0.09);
+        lp.frequency.linearRampToValueAtTime(700 + bright * 3200, t0 + dur);
+      } else {
+        lp.frequency.value = 900 + bright * 5000;
+      }
+      lp.connect(dest); bag.push(lp);
+      const oscs = additive(freq, t0, life, {
+        N, tilt: 0.85 + (1 - bright) * 1.6, peak: 0.4,
+        reed: P.reed || 0, fundBoost: 1.35, chorus: true, glideFrom
+      }, lp, bag);
+      if (P.vib) vibrato(oscs, P.vib[0], P.vib[1], t0, dur, bag);
+      if (P.air){
+        noise(t0, Math.max(0.25, life - 0.06), 2100 + bright * 2200, 0.85,
+              P.air * 0.055, lp, bag, A);
+      }
+      return life;
+    }
+
+    /* hit：打击乐 */
+    const dec = P.dec != null ? P.dec : 0.6;
+    const metal = P.metal || 0;
+    const ratios = P.bell ? [1, 2.0, 2.76, 5.4, 8.93] : (P.wood ? [1, 3.2, 6.1] : [1, 1.6, 2.4]);
+    const gs = P.bell ? [1, 0.5, 0.34, 0.2, 0.11] : (P.wood ? [1, 0.42, 0.18] : [1, 0.4, 0.16]);
+    ratios.forEach((r, i) => {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      const f0 = freq * r * (1 + metal * 0.02 * i);
+      o.frequency.setValueAtTime(f0 * Math.pow(2, (P.drop || 0) / 12), t0);
+      o.frequency.exponentialRampToValueAtTime(f0, t0 + 0.08);
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(0.0001, t0);
+      og.gain.linearRampToValueAtTime(0.5 * gs[i], t0 + 0.002);
+      og.gain.exponentialRampToValueAtTime(0.0001, t0 + Math.max(0.06, dec * (1 - i * 0.12)));
+      o.connect(og); og.connect(dest);
+      o.start(t0); o.stop(t0 + dec + 0.25);
+      bag.push(o, og);
+    });
+    if (P.noise){
+      noise(t0, Math.min(dec, 1.1), P.band || 800, P.bell ? 1.1 : 1.7,
+            P.noise * 0.5, dest, bag, 0.002);
+    }
+    return dec;
+  }
+
+  function kitPattern(t0, dest, bag){
+    const hit = (type, at, gain) => {
+      if (type === 'kick'){
+        const o = ctx.createOscillator(); o.type = 'sine';
+        o.frequency.setValueAtTime(120, at);
+        o.frequency.exponentialRampToValueAtTime(46, at + 0.12);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, at);
+        g.gain.linearRampToValueAtTime(gain * 0.95, at + 0.004);
+        g.gain.exponentialRampToValueAtTime(0.0001, at + 0.36);
+        o.connect(g); g.connect(dest); o.start(at); o.stop(at + 0.45); bag.push(o, g);
+        noise(at, 0.06, 900, 0.8, gain * 0.22, dest, bag, 0.002);
+      } else if (type === 'snare'){
+        noise(at, 0.22, 1900, 0.7, gain * 0.42, dest, bag, 0.002);
+        const o = ctx.createOscillator(); o.type = 'triangle';
+        o.frequency.setValueAtTime(210, at);
+        o.frequency.exponentialRampToValueAtTime(150, at + 0.12);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, at);
+        g.gain.linearRampToValueAtTime(gain * 0.32, at + 0.003);
+        g.gain.exponentialRampToValueAtTime(0.0001, at + 0.18);
+        o.connect(g); g.connect(dest); o.start(at); o.stop(at + 0.28); bag.push(o, g);
+      } else {
+        noise(at, 0.09, 8200, 0.9, gain * 0.2, dest, bag, 0.001);
+      }
+    };
+    hit('kick', t0, 0.9);
+    hit('snare', t0 + 0.34, 0.8);
+    hit('hat', t0 + 0.52, 0.7);
+    hit('kick', t0 + 0.68, 0.85);
+    hit('snare', t0 + 1.02, 0.85);
+    hit('hat', t0 + 1.2, 0.6);
+    return 1.55;
+  }
+
+  // 旋律动机（半音偏移, 时长秒）
+  const MOTIFS = {
+    sus:   [[0, .75], [2, .75], [4, .75], [7, 1.5]],
+    pluck: [[0, .4], [4, .4], [7, .4], [4, .4], [12, .85]],
+    quiet: [[0, .7], [3, .7], [-2, 1.2]],
+    arp:   [[0, .13], [2, .13], [4, .13], [5, .13], [7, .13], [9, .13], [12, 1.0]],
+    slide: [[0, 1.2], [3, 1.2]],
+    hit:   [[0, .55], [0, .55]],
+    luo:   [[0, .7]]
+  };
+  const DEF_MOTIF = { bow:'sus', blow:'sus', pluck:'pluck', hit:'hit', kit:'kit' };
+  const ROOM = { bow:.16, blow:.14, pluck:.3, hit:.36, kit:.26, keys:.28 };
+
+  function stop(){
+    if (timer){ clearTimeout(timer); timer = null; }
+    if (active){
+      const now = ctx ? ctx.currentTime : 0;
+      try {
+        active.master.gain.cancelScheduledValues(now);
+        active.master.gain.setTargetAtTime(0.0001, now, 0.015);
+      } catch(e){}
+      active.nodes.forEach(n => { try { n.stop(now + 0.06); } catch(e){} });
+      const m = active.master, s = active.send;
+      setTimeout(() => { try { m.disconnect(); s.disconnect(); } catch(e){} }, 260);
+      active = null;
+    }
+  }
+
+  function play(inst){
+    const c = ensure();
+    return c.resume().then(() => {
+      stop();
+      const bag = [];
+      const master = c.createGain(); master.gain.value = 0.9;
+      const send = c.createGain();
+      send.gain.value = ROOM[inst.gen] != null ? ROOM[inst.gen] : 0.25;
+      if (c.createDynamicsCompressor){
+        const comp = c.createDynamicsCompressor();
+        comp.threshold.value = -11; comp.knee.value = 14;
+        comp.ratio.value = 3; comp.attack.value = 0.004; comp.release.value = 0.22;
+        master.connect(comp); comp.connect(c.destination);
+      } else {
+        master.connect(c.destination);
+      }
+      send.connect(verb);
+      active = { nodes: bag, master, send };
+
+      let t = c.currentTime + 0.12, total = 0, prev = 0;
+      if (inst.gen === 'kit'){
+        total = kitPattern(t, master, bag);
+        send.gain.value = ROOM.kit;
+        master.connect(send);
+      } else {
+        master.connect(send);
+        const motif = MOTIFS[inst.motif || DEF_MOTIF[inst.gen]] || MOTIFS.pluck;
+        motif.forEach(m => {
+          const semi = m[0], dur = m[1];
+          const f = inst.freq * Math.pow(2, semi / 12);
+          const glide = (inst.motif === 'slide' && prev) ? prev : null;
+          renderNote(f, t, dur * 0.95, inst, master, bag, glide);
+          prev = f; t += dur; total += dur;
+        });
+      }
+
+      let tail;
+      if (inst.gen === 'hit') tail = Math.max(0.6, (inst.p.dec || 0.6)) + 0.5;
+      else if (inst.gen === 'pluck') tail = Math.max(0.8, (inst.p.dec || 1.2)) + 0.2;
+      else if (inst.gen === 'kit') tail = 0.7;
+      else tail = 0.85;
+
+      return new Promise(res => {
+        timer = setTimeout(() => {
+          if (active && active.master === master){
+            active.nodes.forEach(n => { try { n.stop(); } catch(e){} });
+            try { master.disconnect(); send.disconnect(); } catch(e){}
+            active = null;
+          }
+          res();
+        }, (total + tail) * 1000);
+      });
+    });
+  }
+
+  return { play, stop, ensure };
+})();
+
+/* ============================================================
+   4. 基础工具
+   ============================================================ */
+const SEMI = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 };
+function noteFreq(s){
+  const m = /^([A-Ga-g])([#b]?)(-?\d)$/.exec((s || '').trim());
+  if (!m) return 220;
+  const n = SEMI[m[1].toUpperCase()] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0);
+  const midi = (parseInt(m[3], 10) + 1) * 12 + n;
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+const CATNAME = { all:'全部乐器', cn:'中国民族乐器', west:'西洋乐器' };
+const INST = LIB.map(it => Object.assign({}, it, { freq: noteFreq(it.base), src:'synth', srcPath:null }));
+const byId = id => INST.find(i => i.id === id);
+const isCN = i => i.cat === 'cn';
+
+function shuffle(a){
+  const r = a.slice();
+  for (let i = r.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [r[i], r[j]] = [r[j], r[i]];
+  }
+  return r;
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+const iconSVG = k => `<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.6"
+  stroke-linecap="round" stroke-linejoin="round">${ICONS[k] || ICONS.note}</svg>`;
+
+/* ============================================================
+   5. 状态
+   ============================================================ */
+const state = {
+  cat: 'all',
+  fam: 'all',
+  total: 10,
+  onlyReal: false,
+  questions: [],
+  idx: 0,
+  score: 0,
+  answered: false,
+  playing: false,
+  answers: []   // 与 questions 等长：null 或 { pickedId, right }
+};
+
+/* 当前类别下的可用乐器（含音频状态过滤） */
+function poolFor(cat, fam){
+  return INST.filter(i =>
+    i.src !== 'none' &&
+    (cat === 'all' || i.cat === cat) &&
+    (!fam || fam === 'all' || i.fam === fam) &&
+    (!state.onlyReal || i.src === 'real')
+  );
+}
+const pool = () => poolFor(state.cat, state.fam);
+const catBadge = () => {
+  const cls = state.cat === 'cn' ? 'cn' : state.cat === 'west' ? 'west' : 'all';
+  const famTxt = state.fam === 'all' ? '' : ' · ' + state.fam;
+  return { cls, text: CATNAME[state.cat] + famTxt };
+};
+
+/* ============================================================
+   6. 出题：同类别内两选一，干扰项优先挑「音色差异大」的
+   ============================================================ */
+function distance(a, b){
+  let d = 0;
+  if (a.gen !== b.gen) d += 3;
+  if (a.cat !== b.cat) d += 0.5;
+  d += Math.abs(Math.log2((a.freq || 220) / (b.freq || 220))) * 2.0;
+  d += Math.abs((a.p.bright != null ? a.p.bright : .5) - (b.p.bright != null ? b.p.bright : .5)) * 1.2;
+  d += (!!a.p.vib !== !!b.p.vib) ? 0.5 : 0;
+  d += Math.abs((a.p.dec || 1) - (b.p.dec || 1)) * 0.3;
+  d += (!!a.p.noise !== !!b.p.noise) ? 0.6 : 0;
+  return d;
+}
+function pickDistractor(target, list){
+  const cands = shuffle(list.filter(i => i.id !== target.id)).slice(0, 8);
+  if (!cands.length) return null;
+  let best = cands[0], bestScore = -1;
+  cands.forEach(c => {
+    const s = distance(target, c) + Math.random() * 0.7;   // 加一点随机，避免每轮都一样
+    if (s > bestScore){ bestScore = s; best = c; }
+  });
+  return best;
+}
+function buildRound(n, list){
+  const targets = [];
+  let guard = 0;
+  while (targets.length < n && guard++ < 200){
+    shuffle(list).forEach(i => { if (targets.length < n) targets.push(i); });
+  }
+  for (let i = 1; i < targets.length; i++){
+    if (targets[i].id === targets[i - 1].id){
+      const j = targets.findIndex((t, k) => k > i && t.id !== targets[i - 1].id);
+      if (j > -1){ const tmp = targets[i]; targets[i] = targets[j]; targets[j] = tmp; }
+    }
+  }
+  return targets.map(t => {
+    const d = pickDistractor(t, list) || t;
+    return { target: t, options: shuffle([t, d]) };
+  });
+}
+const cur = () => state.questions[state.idx];
+
+/* ============================================================
+   7. 音频探测：audio/<file>（.mp3 → .wav）
+   ============================================================ */
+const AUDIO_EXTS = ['mp3', 'm4a', 'wav', 'ogg'];
+function probeOne(src){
+  return new Promise(res => {
+    const a = new Audio();
+    let done = false;
+    const fin = v => { if (!done){ done = true; res(v); } };
+    a.preload = 'metadata';
+    a.addEventListener('loadedmetadata', () => fin(true));
+    a.addEventListener('error', () => fin(false));
+    setTimeout(() => fin(false), 3000);
+    try { a.src = src; } catch(e){ fin(false); }
+  });
+}
+async function detectSources(){
+  const base = i => 'audio/' + i.file.replace(/\.[^.]+$/, '');
+  const probeChain = async b => {
+    for (const e of AUDIO_EXTS){
+      if (await probeOne(b + '.' + e)) return b + '.' + e;
+    }
+    return null;
+  };
+  const results = await Promise.all(INST.map(i => probeChain(base(i))));
+  INST.forEach((i, k) => {
+    i.srcPath = results[k];
+    i.src = results[k] ? 'real' : (i.gen ? 'synth' : 'none');
+  });
+  renderSourceChip();
+  renderHome();
+  renderLib();
+  renderCredits();
+}
+function renderSourceChip(){
+  const total = INST.length;
+  const real = INST.filter(i => i.src === 'real').length;
+  const none = INST.filter(i => i.src === 'none').length;
+  const chip = document.querySelector('#chipSource');
+  if (real === 0){
+    chip.textContent = '🎹 暂时没有真实录音，使用占位合成音';
+    chip.className = 'chip amber';
+    chip.title = '把真实录音放进 audio/ 目录即可自动启用';
+  } else if (real === total){
+    chip.textContent = '🎧 已加载 ' + real + ' 段真实录音';
+    chip.className = 'chip green';
+  } else {
+    chip.textContent = '🎧 真实录音 ' + real + '/' + total + '，其余为占位音';
+    chip.className = 'chip amber';
+  }
+  if (none) chip.title = none + ' 件乐器暂无音源，已从题库出题范围中排除';
+}
+
+/* ============================================================
+   8. 首页渲染
+   ============================================================ */
+const FAMS = ['拉弦', '弹拨', '吹管', '打击', '弦乐器', '木管乐器', '铜管乐器', '打击乐器', '键盘乐器'];
+const FAMDESC = {
+  '拉弦':'二胡、马头琴等擦弦发声', '弹拨':'古琴、琵琶、古筝等拨弦发声',
+  '吹管':'笛、箫、唢呐等吹奏发声', '打击':'中国民族打击乐：鼓、锣、钹等敲击发声',
+  '弦乐器':'小提琴、中提琴、大提琴、低音提琴、竖琴、吉他',
+  '木管乐器':'短笛、长笛、单簧管、双簧管、巴松管、萨克斯',
+  '铜管乐器':'圆号、小号、长号、大号',
+  '打击乐器':'定音鼓、大鼓、小鼓、三角铁、木琴、钹等',
+  '键盘乐器':'钢琴'
+};
+
+function renderHome(){
+  const cnt = c => INST.filter(i => i.src !== 'none' && (c === 'all' || i.cat === c)).length;
+  document.querySelector('#chipPool').textContent = '🎼 题库共 ' + INST.length + ' 种乐器';
+  document.querySelectorAll('.cat').forEach(btn => {
+    const c = btn.dataset.cat;
+    btn.querySelector('.n').textContent = cnt(c) + ' 种';
+    btn.classList.toggle('on', state.cat === c);
+  });
+  renderFams();
+  renderStartHint();
+}
+
+function renderFams(){
+  const wrap = document.querySelector('#fams');
+  const hint = document.querySelector('#famHint');
+  const list = INST.filter(i => i.src !== 'none' && (state.cat === 'all' || i.cat === state.cat));
+  const groups = FAMS.map(f => ({ f, n: list.filter(i => i.fam === f).length })).filter(g => g.n > 0);
+  wrap.innerHTML = '';
+  if (!groups.length){ hint.textContent = '当前类别暂无可用乐器'; return; }
+
+  const mk = (label, val, n, dis) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'fam' + (state.fam === val ? ' on' : '');
+    b.dataset.fam = val;
+    b.textContent = label + '（' + n + '）';
+    if (dis){ b.disabled = true; b.title = '该组不足 2 种乐器，无法两选一出题'; }
+    b.addEventListener('click', () => {
+      state.fam = val;
+      renderFams(); renderStartHint();
+    });
+    return b;
+  };
+  wrap.appendChild(mk('全部演奏方式', 'all', list.length, false));
+  groups.forEach(g => wrap.appendChild(mk(g.f, g.f, g.n, g.n < 2)));
+
+  const active = list.find(i => state.fam === i.fam);
+  hint.textContent = state.fam === 'all'
+    ? '未限定演奏方式，' + CATNAME[state.cat] + '内 ' + list.length + ' 种乐器都可出题'
+    : '已限定「' + state.fam + '」：' + (FAMDESC[state.fam] || '') + '，共 ' + list.length + ' 种';
+  void active;
+}
+
+function renderStartHint(){
+  const p = pool();
+  const b = catBadge();
+  const el = document.querySelector('#startHint');
+  if (p.length < 2){
+    el.innerHTML = '⚠️ 当前选择下可用乐器不足 2 种，请在题库中补充音源或改选其它类别';
+    document.querySelector('#btnStart').disabled = true;
+  } else {
+    el.textContent = '即将练习：' + b.text + ' · 每轮 ' + Math.min(state.total, p.length) + ' 题 · 可用 ' + p.length + ' 种乐器'
+      + (state.onlyReal ? '（仅真实录音）' : '');
+    document.querySelector('#btnStart').disabled = false;
+  }
+}
+
+function renderLib(){
+  const host = document.querySelector('#libList');
+  host.innerHTML = '';
+  [['cn', '中国民族乐器'], ['west', '西洋乐器']].forEach(([c, cname]) => {
+    const items = INST.filter(i => i.cat === c);
+    FAMS.forEach(f => {
+      const group = items.filter(i => i.fam === f);
+      if (!group.length) return;
+      const box = document.createElement('div');
+      box.className = 'libgroup';
+      const real = group.filter(i => i.src === 'real').length;
+      box.innerHTML = '<div class="gh"><span>' + cname + ' · ' + f + '</span>'
+        + '<span class="h">' + group.length + ' 种 · 真实录音 ' + real + ' 段</span></div>';
+      const its = document.createElement('div');
+      its.className = 'libitems';
+      group.forEach(i => {
+        const s = document.createElement('span');
+        s.className = 'it' + (i.src === 'real' ? ' real' : '') + (i.src === 'none' ? ' none' : '');
+        const tag = i.src === 'real' ? '真实录音' : i.src === 'synth' ? '占位合成音' : '暂无音源';
+        s.textContent = i.name + ' · ' + tag;
+        s.title = i.name + '（' + i.fam + '）\n音频地址：audio/' + i.file
+          + (i.src === 'real' ? '\n✔ 已找到：' + i.srcPath : '\n✘ 未找到，' + (i.gen ? '使用该乐器的合成占位音' : '暂停出题'));
+        its.appendChild(s);
+      });
+      box.appendChild(its);
+      host.appendChild(box);
+    });
+  });
+}
+
+/* ============================================================
+   8b. 音频来源与授权（真实录音署名清单）
+   CREDITS 由「素材清单」生成：每件已启用真实录音的乐器一条，
+   记录来源页面、作者/上传者、授权协议与核实结论。
+   ============================================================ */
+const CREDITS = /*@@CREDITS@@*/{
+  violin: {title:"File:Violin G major scale.ogg", page:"https://commons.wikimedia.org/wiki/File%3AViolin_G_major_scale.ogg", author:"Mutatis mutandis", license:"CC BY-SA 3.0", licenseUrl:"http://creativecommons.org/licenses/by-sa/3.0/", note:"独奏小提琴，G 大调两个八度音阶"},
+  cello: {title:"File:Cello strings.ogg", page:"https://commons.wikimedia.org/wiki/File%3ACello_strings.ogg", author:"Feitscherg", license:"CC BY-SA 3.0", licenseUrl:"http://creativecommons.org/licenses/by-sa/3.0/", note:"大提琴独奏"},
+  doublebass: {title:"File:Jazz walking bass on double bass.oga", page:"https://commons.wikimedia.org/wiki/File%3AJazz_walking_bass_on_double_bass.oga", author:"Serolillo", license:"CC BY 2.5", licenseUrl:"https://creativecommons.org/licenses/by/2.5", note:"低音提琴独奏 walking bass"},
+  harp: {title:"File:Yr Hen Glochydd - Nansi Richards.ogg", page:"https://commons.wikimedia.org/wiki/File%3AYr_Hen_Glochydd_-_Nansi_Richards.ogg", author:"Sain（演奏：Nansi Richards，上传 Jason.nlw）", license:"CC BY-SA 3.0", licenseUrl:"https://creativecommons.org/licenses/by-sa/3.0", note:"竖琴独奏（Nansi Richards）"},
+  flute: {title:"File:F-durskala.ogg", page:"https://commons.wikimedia.org/wiki/File%3AF-durskala.ogg", author:"CarinaT", license:"Public domain", licenseUrl:"", note:"长笛独奏：F 大调音阶"},
+  clarinet: {title:"File:Clarinette clairon.ogg", page:"https://commons.wikimedia.org/wiki/File%3AClarinette_clairon.ogg", author:"Vatekor", license:"CC BY-SA 3.0", licenseUrl:"http://creativecommons.org/licenses/by-sa/3.0/", note:"单簧管：clairon（高音）音区实录"},
+  oboe: {title:"File:Ferling Oboe Study No 28 Aaron Hill.ogg", page:"https://commons.wikimedia.org/wiki/File%3AFerling_Oboe_Study_No_28_Aaron_Hill.ogg", author:"Aaron Hill Oboe / Franz Wilhelm Ferling (1796–1874) Bearbeitung (Video entfernt): Lewenstein", license:"Public domain", licenseUrl:"", note:"双簧管独奏练习曲（Aaron Hill）"},
+  bassoon: {title:"File:Bassoon-technical-range.ogg", page:"https://commons.wikimedia.org/wiki/File%3ABassoon-technical-range.ogg", author:"Gmaxwell", license:"CC BY-SA 3.0", licenseUrl:"http://creativecommons.org/licenses/by-sa/3.0/", note:"巴松管独奏：音域示范"},
+  trumpet: {title:"File:Trompetensolo Ich hatt einen Kameraden.ogg", page:"https://commons.wikimedia.org/wiki/File%3ATrompetensolo_Ich_hatt_einen_Kameraden.ogg", author:"DrTrumpet", license:"CC BY-SA 4.0", licenseUrl:"https://creativecommons.org/licenses/by-sa/4.0", note:"小号独奏"},
+  trombone: {title:"File:Pedal tone demonstration2.ogg", page:"https://commons.wikimedia.org/wiki/File%3APedal_tone_demonstration2.ogg", author:"Ovinus Real", license:"CC BY-SA 4.0", licenseUrl:"https://creativecommons.org/licenses/by-sa/4.0", note:"长号独奏：三个长音（含低音）"},
+  timpani: {title:"File:Paukenwirbel auf einer Wiener Pauke mit acht verschiedenen Schlegeln.ogg", page:"https://commons.wikimedia.org/wiki/File%3APaukenwirbel_auf_einer_Wiener_Pauke_mit_acht_verschiedenen_Schlegeln.ogg", author:"DrTrumpet", license:"CC BY-SA 4.0", licenseUrl:"https://creativecommons.org/licenses/by-sa/4.0", note:"定音鼓：维也纳定音鼓滚奏（八种不同鼓槌）"},
+  bassdrum: {title:"File:Bass drum.ogg", page:"https://commons.wikimedia.org/wiki/File%3ABass_drum.ogg", author:"No machine-readable author provided. Clngre~commonswiki assumed (based on copyright claims).", license:"CC BY-SA 3.0", licenseUrl:"http://creativecommons.org/licenses/by-sa/3.0/", note:"大鼓单击"},
+  snaredrum: {title:"File:Snare drum unmuffled.ogg", page:"https://commons.wikimedia.org/wiki/File%3ASnare_drum_unmuffled.ogg", author:"No machine-readable author provided. Clngre~commonswiki assumed (based on copyright claims).", license:"CC BY-SA 3.0", licenseUrl:"http://creativecommons.org/licenses/by-sa/3.0/", note:"小鼓（军鼓）单击"},
+  triangle: {title:"File:LatinTriangle.ogg", page:"https://commons.wikimedia.org/wiki/File%3ALatinTriangle.ogg", author:"http://en.wikipedia.org/wiki/User:Freddythehat", license:"Public domain", licenseUrl:"", note:"三角铁敲击"},
+  cymbals: {title:"File:Crash cymbal.ogg", page:"https://commons.wikimedia.org/wiki/File%3ACrash_cymbal.ogg", author:"No machine-readable author provided. Clngre~commonswiki assumed (based on copyright claims).", license:"CC BY-SA 3.0", licenseUrl:"http://creativecommons.org/licenses/by-sa/3.0/", note:"钹（对镲）撞击"},
+  piano: {title:"File:Piano acústico, acorde C.ogg", page:"https://commons.wikimedia.org/wiki/File%3APiano_ac%C3%BAstico%2C_acorde_C.ogg", author:"ZappaMidiPF", license:"CC BY-SA 4.0", licenseUrl:"https://creativecommons.org/licenses/by-sa/4.0", note:"原声钢琴 C 和弦"},
+  guitar: {title:"File:La bamba chords cfg7.ogg", page:"https://commons.wikimedia.org/wiki/File%3ALa_bamba_chords_cfg7.ogg", author:"Jules Grandgagnage", license:"CC BY-SA 4.0", licenseUrl:"https://creativecommons.org/licenses/by-sa/4.0", note:"吉他弹奏和弦"},
+  saxophone: {title:"File:Jazz-Sax.ogg", page:"https://commons.wikimedia.org/wiki/File%3AJazz-Sax.ogg", author:"Serolillo", license:"CC BY 2.5", licenseUrl:"https://creativecommons.org/licenses/by/2.5", note:"次中音萨克斯独奏"},
+  drumkit: {title:"File:Rock beat hi hat.ogg", page:"https://commons.wikimedia.org/wiki/File%3ARock_beat_hi_hat.ogg", author:"No machine-readable author provided. Clngre~commonswiki assumed (based on copyright claims).", license:"CC BY-SA 3.0", licenseUrl:"http://creativecommons.org/licenses/by-sa/3.0/", note:"架子鼓基本节奏（底鼓+军鼓+踩镲）"},
+  viola: {title:"File:Viola CGDA.ogg", page:"https://commons.wikimedia.org/wiki/File%3AViola_CGDA.ogg", author:"Amitchell125", license:"CC BY-SA 4.0", licenseUrl:"https://creativecommons.org/licenses/by-sa/4.0", note:"中提琴：C-G-D-A 定弦逐弦实录"},
+  xylophone: {title:"File:Xylophone jingle.wav", page:"https://commons.wikimedia.org/wiki/File%3AXylophone_jingle.wav", author:"spazzo_1493（上传 Mx. Granger）", license:"CC BY 3.0", licenseUrl:"https://creativecommons.org/licenses/by/3.0", note:"木琴：真琴槌敲击的木琴短句"},
+  tuba: {title:"File:Tuba-range-C-low.ogg", page:"https://commons.wikimedia.org/wiki/File%3ATuba-range-C-low.ogg", author:"AntoineVE", license:"Public domain", licenseUrl:"", note:"大号：低音区 C 音实录"},
+  piccolo: {title:"File:Betthoven, no 5, Piccolo.wav", page:"https://commons.wikimedia.org/wiki/File%3ABetthoven%2C_no_5%2C_Piccolo.wav", author:"MBozorgmehr", license:"CC0", licenseUrl:"http://creativecommons.org/publicdomain/zero/1.0/deed.en", note:"短笛：贝多芬第五交响曲末乐章短笛动机"},
+  frenchhorn: {title:"File:Paul Dukas - Villanelle for horn & piano (Dennis Brain, Gerald Moore, 1952).flac", page:"https://commons.wikimedia.org/wiki/File%3APaul_Dukas_-_Villanelle_for_horn_%26_piano_%28Dennis_Brain%2C_Gerald_Moore%2C_1952%29.flac", author:"Dennis Brain（圆号）/ Gerald Moore（钢琴）；法国国家图书馆藏，上传 Flopinot2012", license:"Public domain", licenseUrl:"", note:"圆号：杜卡斯《Villanelle》开头由圆号独奏呈示主题（1952 年 Dennis Brain 录音，含钢琴伴奏）"}
+};
+function renderCredits(){
+  const host = document.querySelector('#creditList');
+  if (!host) return;
+  const rows = INST.filter(i => i.src === 'real' && CREDITS[i.id]);
+  if (!rows.length){
+    host.innerHTML = '<p class="crnote">当前没有加载到任何真实录音，全部使用合成占位音。</p>';
+    return;
+  }
+  const w = document.createElement('div');
+  w.className = 'crwrap';
+  const t = document.createElement('table');
+  t.className = 'crtable';
+  t.innerHTML = '<thead><tr><th>乐器</th><th>分类</th><th>录音来源</th>'
+    + '<th>作者 / 上传者</th><th>授权协议</th><th>核实情况</th></tr></thead>';
+  const tb = document.createElement('tbody');
+  rows.forEach(i => {
+    const c = CREDITS[i.id] || {};
+    const lic = esc(c.license || '—')
+      + (c.licenseUrl ? ' <a href="' + esc(c.licenseUrl) + '" target="_blank" rel="noopener">条款</a>' : '');
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td class="nm">' + esc(i.name) + '</td>'
+      + '<td class="cat">' + (i.cat === 'cn' ? '中国民族乐器' : '西洋乐器') + '<br>' + esc(i.fam) + '</td>'
+      + '<td><a href="' + esc(c.page || '#') + '" target="_blank" rel="noopener">'
+      + esc(c.title || (c.page || '')) + '</a></td>'
+      + '<td>' + esc(c.author || '—') + '</td>'
+      + '<td>' + lic + '</td>'
+      + '<td><span class="crtag">名称已核对</span>' + (c.note ? '<br>' + esc(c.note) : '') + '</td>';
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb);
+  w.appendChild(t);
+  host.innerHTML = '';
+  host.appendChild(w);
+}
+
+/* ============================================================
+   9. 练习流程
+   ============================================================ */
+function startRound(){
+  const p = pool();
+  if (p.length < 2){ toast('可用乐器不足 2 种，无法出题'); return; }
+  Sound.stop();
+  state.questions = buildRound(Math.min(state.total, Math.max(2, p.length)), p);
+  state.idx = 0; state.score = 0;
+  state.answers = new Array(state.questions.length).fill(null);
+  showScreen('quiz');
+  renderQuestion();
+}
+
+function setPlaying(on){
+  state.playing = on;
+  const p = document.querySelector('#btnPlay');
+  p.classList.toggle('playing', on);
+  p.disabled = on;
+  p.setAttribute('aria-label', on ? '正在播放' : '播放当前题目音频');
+  document.querySelector('#btnReplay').disabled = on;
+  const lab = document.querySelector('#playLabel');
+  lab.textContent = on ? '正在播放…' : '点击播放音色';
+  lab.classList.toggle('busy', on);
+}
+
+function renderSrcNote(){
+  const inst = cur().target;
+  const n = document.querySelector('#srcNote');
+  n.hidden = false;
+  if (inst.src === 'real'){
+    n.className = 'srcnote real';
+    n.textContent = '🎧 真实录音';
+    n.title = inst.srcPath;
+  } else if (inst.src === 'synth'){
+    n.className = 'srcnote syn';
+    n.textContent = '🎹 占位合成音（暂无真实录音）';
+    n.title = '建议放入 audio/' + inst.file + ' 以使用真实录音';
+  } else {
+    n.className = 'srcnote syn';
+    n.textContent = '⚠️ 暂无可用音源';
+    n.title = '';
+  }
+}
+
+const answeredCount = () => state.answers.filter(Boolean).length;
+const scoreNow = () => state.answers.filter(a => a && a.right).length;
+
+function renderQuestion(){
+  const q = cur();
+  setPlaying(false);
+  state.answered = !!state.answers[state.idx];
+
+  const b = catBadge();
+  const el = document.querySelector('#qCat');
+  el.className = 'badge ' + b.cls;
+  el.textContent = b.text;
+  document.querySelector('#qIndex').textContent = state.idx + 1;
+  document.querySelector('#qTotal').textContent = state.questions.length;
+  updateScoreLine();
+
+  const pb = document.querySelector('#btnPrev');
+  pb.classList.toggle('dim', state.idx === 0);
+  pb.title = state.idx === 0 ? '已经是第 1 题' : '上一题（←）';
+
+  const fb = document.querySelector('#feedback');
+  fb.hidden = true; fb.className = 'feedback'; fb.innerHTML = '';
+
+  const wrap = document.querySelector('#options');
+  wrap.innerHTML = '';
+  q.options.forEach(inst => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'opt';
+    btn.dataset.id = inst.id;
+    btn.innerHTML = iconSVG(inst.icon)
+      + '<span class="name">' + esc(inst.name) + '</span>'
+      + '<span class="ofam">' + esc(inst.fam) + '</span>'
+      + '<span class="mark" aria-hidden="true"></span>';
+    btn.addEventListener('click', () => answer(inst.id));
+    wrap.appendChild(btn);
+  });
+
+  const rec = state.answers[state.idx];
+  if (rec){
+    // 回看已答过的题：还原当时的作答与反馈，成绩不再重复计入
+    applyAnswerUI(rec.pickedId, rec.right, true);
+  } else {
+    const nx = document.querySelector('#btnNext');
+    nx.disabled = true;
+    nx.textContent = (state.idx === state.questions.length - 1) ? '查看成绩 →' : '下一题 →';
+  }
+  renderSrcNote();
+}
+
+function updateScoreLine(){
+  const done = answeredCount();
+  const rate = done ? Math.round(scoreNow() / done * 100) : 0;
+  document.querySelector('#qRight').textContent = scoreNow();
+  document.querySelector('#qRate').textContent = rate + '%';
+  document.querySelector('#qBar').style.width = (done / state.questions.length * 100) + '%';
+}
+
+/* 标注选项对错 + 显示反馈条（复习时也复用） */
+function applyAnswerUI(pickedId, right, replay){
+  const q = cur();
+  state.answered = true;
+  document.querySelectorAll('.opt').forEach(btn => {
+    btn.disabled = true;
+    const id = btn.dataset.id;
+    if (id === q.target.id){
+      btn.classList.add('right');
+      btn.querySelector('.mark').textContent = '✓';
+    } else if (id === pickedId){
+      btn.classList.add('wrong', 'dim');
+      btn.querySelector('.mark').textContent = '✕';
+    } else {
+      btn.classList.add('dim');
+    }
+  });
+
+  const fb = document.querySelector('#feedback');
+  fb.hidden = false;
+  fb.className = 'feedback ' + (right ? 'ok' : 'no');
+  fb.innerHTML = '<span class="ic">' + (right ? '🎉' : '💡') + '</span><div><b>'
+    + (replay ? '你当时选了「' + esc(nameOf(pickedId, q)) + '」' : (right ? '答对了！' : '这次是「' + esc(q.target.name) + '」'))
+    + '</b>　正确答案：' + esc(q.target.name) + '（' + esc(q.target.cat === 'cn' ? '中国民族乐器' : '西洋乐器') + ' · ' + esc(q.target.fam) + '）'
+    + '<span class="tip">' + esc(q.target.tip) + '</span>'
+    + (right ? '' : '<span class="tip">已用绿色标出正确答案，可以按「再听一次」再对比一遍。</span>')
+    + '</div>';
+
+  const nx = document.querySelector('#btnNext');
+  nx.disabled = false;
+  nx.textContent = (state.idx === state.questions.length - 1) ? '查看成绩 →' : '下一题 →';
+  if (!replay) nx.focus({ preventScroll: true });
+}
+
+function nameOf(id, q){
+  const it = (q.options || []).find(o => o.id === id);
+  return it ? it.name : '（未知）';
+}
+
+async function playFile(src){
+  return new Promise((resolve, reject) => {
+    const a = new Audio(src);
+    let settled = false;
+    const fin = ok => { if (!settled){ settled = true; ok ? resolve() : reject(new Error('load-fail')); } };
+    a.addEventListener('error', () => fin(false));
+    a.addEventListener('ended', () => fin(true));
+    const t = setTimeout(() => { if (!settled){ try { a.pause(); } catch(e){} fin(false); } }, 12000);
+    a.play().then(() => {}).catch(() => { clearTimeout(t); fin(false); });
+  });
+}
+
+async function playCurrent(){
+  if (state.playing) return;
+  const inst = cur().target;
+  setPlaying(true);
+  try {
+    if (inst.src === 'real' && inst.srcPath){
+      await playFile(inst.srcPath);
+    } else if (inst.gen){
+      await Sound.play(inst);
+    } else {
+      throw new Error('no-source');
+    }
+  } catch (e){
+    if (inst.src === 'real'){
+      inst.src = inst.gen ? 'synth' : 'none';
+      renderSrcNote(); renderSourceChip(); renderLib();
+      toast('音频「' + inst.file + '」加载失败，已改用该乐器的合成占位音 🎧');
+      try { await Sound.play(inst); } catch (e2){ toast('播放失败：请检查设备音量，或换用较新的浏览器'); }
+    } else if (inst.gen){
+      try { await Sound.play(inst); } catch (e2){ toast('播放失败：请检查设备音量，或换用较新的浏览器'); }
+    } else {
+      toast('这件乐器暂无可用音源，已跳过播放');
+    }
+  } finally {
+    setPlaying(false);
+  }
+}
+
+function answer(pickedId){
+  if (state.answers[state.idx]) return;
+  const q = cur();
+  const right = pickedId === q.target.id;
+  state.answers[state.idx] = { pickedId, right };
+  state.score = scoreNow();
+  Sound.stop();
+  applyAnswerUI(pickedId, right, false);
+  updateScoreLine();
+}
+
+function nextQuestion(){
+  if (state.idx < state.questions.length - 1){
+    state.idx++;
+    renderQuestion();
+  } else {
+    showResult();
+  }
+}
+
+function prevQuestion(){
+  Sound.stop();
+  if (state.idx === 0){ toast('已经是第 1 题了'); return; }
+  state.idx--;
+  renderQuestion();
+}
+
+/* ============================================================
+   10. 结算
+   ============================================================ */
+function showResult(){
+  Sound.stop();
+  const n = state.questions.length;
+  const score = scoreNow();
+  state.score = score;
+  const pct = Math.round(score / n * 100);
+  document.querySelector('#rPct').textContent = pct + '%';
+  document.querySelector('#rScore').textContent = score + ' / ' + n;
+  document.querySelector('#ring').style.setProperty('--p', pct);
+  const b = catBadge();
+  const rc = document.querySelector('#rCat');
+  rc.className = 'badge ' + b.cls;
+  rc.textContent = b.text;
+
+  let title, msg;
+  if (pct >= 90){ title = '太棒了！🎉'; msg = '耳朵已经能抓住这些乐器的特点了，可以试试更难的类别。'; }
+  else if (pct >= 70){ title = '很不错！👏'; msg = '大部分都听出来了，再练几轮会更稳。'; }
+  else if (pct >= 50){ title = '有进步空间 💪'; msg = '注意听「起音」是敲击、弹拨还是吹出来的，以及有没有揉弦。'; }
+  else { title = '慢慢来就好 🌱'; msg = '先记住每种乐器的声音性格：拉弦连贯、弹拨有颗粒、吹管有气声、打击有冲击感。'; }
+  document.querySelector('#rTitle').textContent = title;
+  document.querySelector('#rMsg').textContent = msg;
+
+  const list = document.querySelector('#reviewList');
+  list.innerHTML = '';
+  let shown = 0;
+  state.questions.forEach((q, i) => {
+    const rec = state.answers[i];
+    if (!rec) return;
+    shown++;
+    const li = document.createElement('li');
+    li.className = rec.right ? 'ok' : 'no';
+    li.innerHTML = '<span class="idx">第 ' + (i + 1) + ' 题</span>'
+      + '<span class="nm">' + esc(q.target.name) + ' <span class="ofam">' + esc(q.target.fam) + '</span></span>'
+      + '<span class="st">' + (rec.right ? '答对 ✓' : '答错 ✕') + '</span>';
+    list.appendChild(li);
+  });
+  document.querySelector('#reviewWrap').hidden = shown === 0;
+  document.querySelector('#btnAgain').textContent = '再练一轮（' + (state.fam === 'all' ? CATNAME[state.cat] : state.fam) + '）';
+
+  showScreen('result');
+}
+
+function showScreen(name){
+  ['home', 'quiz', 'result'].forEach(k => {
+    document.querySelector('#screen-' + k).classList.toggle('on', k === name);
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+let toastTimer = null;
+function toast(msg, ms){
+  const t = document.querySelector('#toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('on'), ms || 3400);
+}
+
+/* ============================================================
+   11. 事件绑定
+   ============================================================ */
+document.querySelector('#cats').addEventListener('click', e => {
+  const btn = e.target.closest('.cat');
+  if (!btn) return;
+  state.cat = btn.dataset.cat;
+  state.fam = 'all';
+  renderHome();
+});
+document.querySelector('#segCount').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  state.total = parseInt(btn.dataset.n, 10);
+  document.querySelectorAll('#segCount button').forEach(b => b.classList.toggle('on', b === btn));
+  renderStartHint();
+});
+document.querySelector('#onlyReal').addEventListener('change', e => {
+  state.onlyReal = e.target.checked;
+  if (state.onlyReal && pool().length < 2){
+    state.onlyReal = false; e.target.checked = false;
+    toast('目前有真实录音的乐器不足 2 种，暂时无法只练真实录音');
+  }
+  renderFams(); renderStartHint();
+});
+document.querySelector('#btnStart').addEventListener('click', startRound);
+document.querySelector('#btnAgain').addEventListener('click', startRound);
+document.querySelector('#btnHome').addEventListener('click', () => { Sound.stop(); showScreen('home'); renderHome(); });
+document.querySelector('#btnPrev').addEventListener('click', prevQuestion);
+document.querySelector('#btnQuizHome').addEventListener('click', () => { Sound.stop(); showScreen('home'); renderHome(); });
+document.querySelector('#btnPlay').addEventListener('click', playCurrent);
+document.querySelector('#btnReplay').addEventListener('click', playCurrent);
+document.querySelector('#btnNext').addEventListener('click', nextQuestion);
+
+document.addEventListener('keydown', e => {
+  if (!document.querySelector('#screen-quiz').classList.contains('on')) return;
+  if (e.target.tagName === 'BUTTON' && (e.key === 'Enter' || e.key === ' ')) return;
+  if (e.key === ' '){ e.preventDefault(); playCurrent(); }
+  else if (e.key === 'Escape'){ Sound.stop(); showScreen('home'); renderHome(); }
+  else if (e.key === 'ArrowLeft'){ e.preventDefault(); prevQuestion(); }
+  else if (e.key === '1' || e.key === '2'){
+    const b = document.querySelectorAll('.opt')[parseInt(e.key, 10) - 1];
+    if (b && !b.disabled) b.click();
+  } else if (e.key === 'Enter' && !document.querySelector('#btnNext').disabled){
+    nextQuestion();
+  }
+});
+
+/* ============================================================
+   12. 启动
+   ============================================================ */
+renderHome();
+renderLib();
+renderSourceChip();
+detectSources();
+</script>
+</body>
+</html>
